@@ -19,6 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .agent_id("agent-solo")
         .role("worker")
         .project("demo")
+        .branch("main")
         .port(7000)
         .mdns_port(mdns_port)
         .heartbeat_interval(Duration::from_secs(1))
@@ -32,6 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("local agent id: {}", mesh.local_agent_id());
     println!("instance name: {}", local.instance_name());
+    println!("branch: {}", local.branch());
     println!("known agents in registry: {}", agents.len());
 
     mesh.shutdown().await?;
