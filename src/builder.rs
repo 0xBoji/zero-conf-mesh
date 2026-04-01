@@ -3,19 +3,42 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::{
-    config::{DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_SERVICE_TYPE, DEFAULT_TTL, ZeroConfConfig},
+    config::{
+        DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MDNS_PORT, DEFAULT_SERVICE_TYPE, DEFAULT_TTL,
+        ZeroConfConfig,
+    },
     error::ZeroConfError,
     mesh::ZeroConfMesh,
     types::{AgentMetadata, AgentStatus},
 };
 
 /// Builder for constructing a [`ZeroConfMesh`] instance.
+///
+/// # Example
+/// ```no_run
+/// use zero_conf_mesh::ZeroConfMesh;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mesh = ZeroConfMesh::builder()
+///     .agent_id("agent-01")
+///     .role("coder")
+///     .project("alpha")
+///     .port(8080)
+///     .build()
+///     .await?;
+///
+/// mesh.shutdown().await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ZeroConfMeshBuilder {
     agent_id: Option<String>,
     role: String,
     project: String,
     port: Option<u16>,
+    mdns_port: u16,
     service_type: String,
     initial_status: AgentStatus,
     heartbeat_interval: Duration,
@@ -30,6 +53,7 @@ impl Default for ZeroConfMeshBuilder {
             role: "agent".to_owned(),
             project: "default".to_owned(),
             port: None,
+            mdns_port: DEFAULT_MDNS_PORT,
             service_type: DEFAULT_SERVICE_TYPE.to_owned(),
             initial_status: AgentStatus::Idle,
             heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL,
@@ -65,6 +89,13 @@ impl ZeroConfMeshBuilder {
     #[must_use]
     pub const fn port(mut self, port: u16) -> Self {
         self.port = Some(port);
+        self
+    }
+
+    /// Sets the UDP port used by the internal mDNS daemon.
+    #[must_use]
+    pub const fn mdns_port(mut self, mdns_port: u16) -> Self {
+        self.mdns_port = mdns_port;
         self
     }
 
@@ -128,6 +159,7 @@ impl ZeroConfMeshBuilder {
             self.role,
             self.project,
             port,
+            self.mdns_port,
             self.service_type,
             self.initial_status,
             self.heartbeat_interval,
@@ -147,6 +179,7 @@ mod tests {
             .role("reviewer")
             .project("alpha")
             .port(8080)
+            .mdns_port(54_541)
             .build()
             .await
             .expect("builder should generate an agent id");

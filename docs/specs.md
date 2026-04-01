@@ -1,86 +1,336 @@
 # Technical Specification: `zero-conf-mesh`
 
 ## 1. Overview
-`zero-conf-mesh` is a Rust crate providing a decentralized Service Discovery mechanism for multi-agent systems within a Local Area Network (LAN). Built on top of mDNS (Multicast DNS) and DNS-SD, this crate enables autonomous nodes to dynamically discover, connect, and share states without relying on any central server or database.
+`zero-conf-mesh` is a Rust library for zero-configuration LAN service discovery for multi-agent systems using mDNS and DNS-SD. It is designed for local-network coordination only: agents advertise themselves, discover peers, and maintain an in-memory registry of currently known nodes without requiring any central service.
 
-## 2. Motivation
-In distributed systems, particularly when building toolkits for autonomous LLM agents (e.g., agents coordinating automated trading strategies, data scraping, or code reviewing), hardcoding IPs or setting up a Service Registry (like Consul or ZooKeeper) is overkill and lacks flexibility for local/edge environments.
+The crate currently provides:
+- a typed async-first builder and runtime handle,
+- mDNS/DNS-SD advertisement for the local node,
+- background browsing for remote peers,
+- a concurrent in-memory registry with TTL-based stale-node eviction,
+- lifecycle events for join, update, and leave transitions.
 
-This project solves a specific problem: **How do we drop N agents into the same local network and have them autonomously figure out "Who is where, and what are they doing?"**
+## 2. Goals and Non-Goals
+
+### Goals
+- Zero manual peer configuration on a shared LAN.
+- Small, ergonomic, async-first Rust API.
+- Compact, predictable TXT metadata.
+- Explicit lifecycle events for observability.
+- Graceful shutdown plus crash-tolerant stale-node eviction.
+
+### Non-Goals
+- Cross-subnet or WAN discovery.
+- Strong delivery guarantees.
+- Authentication or encryption of advertisements.
+- Consensus, leader election, or distributed locking.
 
 ## 3. Architecture
-The system consists of three main concurrent components:
+The runtime is composed of four cooperating parts:
 
-1. **Broadcaster:** Continuously announces the current agent's presence via mDNS broadcast.
-2. **Listener:** Listens to mDNS traffic to discover other agents sharing the `_agent-mesh._tcp` service type.
-3. **Registry:** A thread-safe, in-memory state store that maintains and updates the metadata of all discovered agents in real-time.
+1. **Builder / Config**: validates static settings such as service type, ports, TTL, and heartbeat cadence.
+2. **Broadcaster**: registers and re-announces the local service via `mdns-sd`.
+3. **Listener**: browses the configured service type and converts resolved peers into typed announcements.
+4. **Registry**: stores discovered agents and emits lifecycle events.
 
-### Data Flow
-1. `Agent A` starts -> Updates its Local Registry -> Broadcaster announces presence via mDNS with TXT records.
-2. `Agent B` (running Listener) -> Captures `Agent A`'s packet -> Parses TXT records -> Saves `Agent A` into `Agent B`'s Local Registry.
-3. When `Agent A` shuts down gracefully -> Sends a "Goodbye" mDNS packet -> `Agent B` removes `Agent A` from its Registry.
+### 3.1 Concurrency Model
+The crate uses `tokio` for orchestration and `mdns-sd` for network I/O.
 
-## 4. Data Models
+- `ZeroConfMesh` owns the runtime.
+- The local advertisement is stored in `Arc<RwLock<AgentAnnouncement>>` so it can be updated safely at runtime.
+- The registry is a cloneable `Arc<RwLock<HashMap<...>>>` wrapper.
+- Background tasks are spawned for:
+  - periodic heartbeat re-announcement,
+  - periodic TTL sweeping,
+  - continuous mDNS browse event consumption.
+- shutdown signaling uses `tokio::sync::watch`.
+- registry event fan-out uses `tokio::sync::broadcast`.
 
-### 4.1. Network Identifier
-- **Service Type:** `_agent-mesh._tcp.local.`
-- **Instance Name:** A unique name generated randomly or based on the Agent ID (e.g., `agent-01._agent-mesh._tcp.local.`).
+### 3.2 Component Diagram
+```text
+                    +-------------------+
+                    |   ZeroConfMesh    |
+                    |  config + tasks   |
+                    +---------+---------+
+                              |
+          +-------------------+-------------------+
+          |                   |                   |
+          v                   v                   v
++----------------+   +----------------+   +----------------+
+|  Broadcaster   |   |    Listener    |   |    Registry    |
+| register/update|   | browse/resolve |   | in-memory view |
++--------+-------+   +--------+-------+   +--------+-------+
+         |                    |                    |
+         v                    v                    v
+     mdns-sd daemon <---- local network ----> lifecycle events
+```
 
-### 4.2. Metadata (TXT Records)
-mDNS TXT record payloads should ideally be kept under 400 bytes. Required structure:
-- `agent_id` (String): Unique identifier (UUID/Snowflake).
-- `role` (String): The agent's role (e.g., `coder`, `reviewer`, `project-manager`).
-- `current_project` (String): Project space for grouping/isolation.
-- `status` (String): Current operational status (`idle`, `busy`, `error`).
+### 3.3 Runtime Flow
+1. Build validated config.
+2. Create `mdns-sd` daemon.
+3. Construct local announcement and register it.
+4. Insert the local node into the registry as a local-origin entry.
+5. Start listener, heartbeat, and sweeper tasks.
+6. Remote `ServiceResolved` events are parsed into `AgentAnnouncement` values and upserted into the registry.
+7. Remote `ServiceRemoved` events remove matching peers by instance name.
+8. On shutdown, the local service is unregistered, local registry state is removed, tasks stop, and the daemon is shut down.
 
-### 4.3. Registry State (`AgentInfo`)
+## 4. Data Model
+
+### 4.1 Network Identity
+- **Service Type**: `_agent-mesh._tcp.local.` by default.
+- **Instance Name**: `{agent_id}.{service_type}`.
+- **Host Name**: `{agent_id}.local.`.
+
+### 4.2 TXT Metadata
+The canonical TXT keys are:
+- `agent_id`
+- `role`
+- `current_project`
+- `status`
+
+Additional metadata is allowed as arbitrary string key/value pairs.
+
+Constraints:
+- keys must be non-empty,
+- required keys must be present when parsing remote peers,
+- values are expected to be valid UTF-8,
+- payloads should remain compact; keeping total TXT data under roughly 400 bytes is recommended.
+
+### 4.3 `AgentStatus`
 ```rust
-struct AgentInfo {
+pub enum AgentStatus {
+    Idle,
+    Busy,
+    Error,
+}
+```
+
+Properties:
+- serialized with snake_case strings,
+- parseable from TXT metadata,
+- currently limited to `idle`, `busy`, and `error`.
+
+### 4.4 `AgentAnnouncement`
+`AgentAnnouncement` is the wire-adjacent structure used to:
+- build TXT properties,
+- construct `mdns_sd::ServiceInfo`,
+- parse resolved services from `mdns-sd`,
+- convert into registry state.
+
+Important fields:
+- `instance_name: String`
+- `agent_id: String`
+- `role: String`
+- `project: String`
+- `status: AgentStatus`
+- `port: u16`
+- `addresses: Vec<IpAddr>`
+- `metadata: AgentMetadata`
+
+### 4.5 `AgentInfo`
+`AgentInfo` is the in-memory registry representation of a discovered agent.
+
+```rust
+pub struct AgentInfo {
+    instance_name: String,
     id: String,
-    ip_addresses: Vec<IpAddr>,
+    role: String,
+    project: String,
+    status: AgentStatus,
     port: u16,
-    metadata: HashMap<String, String>,
+    addresses: Vec<IpAddr>,
+    metadata: AgentMetadata,
     last_seen: Instant,
 }
 ```
 
-## 5. Public API Surface (Proposed)
-The Developer API should be simple and declarative.
+Notes:
+- `last_seen` is monotonic and used only for runtime TTL management.
+- `AgentInfo` is cloned for snapshots and event emission.
+- serialization is intentionally not implemented for `AgentInfo` because `Instant` is process-local and not portable across processes.
 
+## 5. Public API
+
+### 5.1 Main Entry Points
 ```rust
-// Initialize the Mesh with configuration
-let mut mesh = ZeroConfMesh::builder()
+let mesh = ZeroConfMesh::builder()
     .agent_id("agent-01")
-    .role("project-manager")
-    .project("iOS-liquid-glass")
+    .role("reviewer")
+    .project("alpha")
     .port(8080)
     .build()
     .await?;
 
-// Retrieve active agents within a specific project
-let active_agents = mesh.registry().get_all_by_project("iOS-liquid-glass");
+mesh.update_status(AgentStatus::Busy).await?;
 
-// Update status (triggers a new TXT record broadcast)
-mesh.update_status("busy").await?;
+let local = mesh.local_agent().await;
+let all_agents = mesh.agents().await;
+let alpha_agents = mesh.agents_by_project("alpha").await;
+let maybe_peer = mesh.get_agent("agent-02").await;
+
+let mut events = mesh.subscribe();
 ```
 
-## 6. Edge Cases & Constraints
-- **Network Isolation:** mDNS does not route across Subnets/VLANs (operates at Layer 2 Broadcast). This is strictly for local network use.
-- **Multiple Network Interfaces:** Machines may have multiple NICs (Wi-Fi, Docker bridge, VPN). The system must bind to the correct interface or broadcast across all available interfaces (`0.0.0.0`).
-- **Split Brain / Zombie Nodes:** If an agent crashes unexpectedly (fails to send a "Goodbye" packet), the Registry must implement a TTL (Time-To-Live) eviction policy to purge stale nodes that haven't sent a heartbeat within a specific timeframe (e.g., 120 seconds).
+### 5.2 `ZeroConfMeshBuilder`
+Current builder setters:
+- `agent_id(...)`
+- `role(...)`
+- `project(...)`
+- `port(...)`
+- `mdns_port(...)`
+- `service_type(...)`
+- `status(...)`
+- `heartbeat_interval(...)`
+- `ttl(...)`
+- `metadata(key, value)`
+- `metadata_map(...)`
+- `build().await`
 
-## 7. Future Roadmap
-- Support for encrypted TXT record payloads (Security).
-- Integration of automatic Leader Election among nodes.
+Defaults:
+- random UUID `agent_id` if omitted,
+- role = `agent`,
+- project = `default`,
+- service type = `_agent-mesh._tcp.local.`,
+- mDNS port = `5353`,
+- heartbeat = `30s`,
+- TTL = `120s`,
+- initial status = `Idle`.
+
+### 5.3 High-Level Runtime API
+`ZeroConfMesh` currently exposes:
+- `builder()`
+- `from_config(...).await`
+- `config()`
+- `registry()`
+- `local_agent_id()`
+- `local_agent().await`
+- `get_agent(...).await`
+- `agents().await`
+- `agents_by_project(...).await`
+- `subscribe()`
+- `update_status(...).await`
+- `shutdown().await`
+
+`registry()` is still available for advanced read access, but typical consumers should prefer the high-level query methods on `ZeroConfMesh`.
+
+### 5.4 Lifecycle Events
+```rust
+pub enum EventOrigin {
+    Local,
+    Remote,
+}
+
+pub enum DepartureReason {
+    Graceful,
+    Expired,
+}
+
+pub enum AgentEvent {
+    Joined { agent, origin },
+    Updated { previous, current, origin },
+    Left { agent, origin, reason },
+}
 ```
 
-Where the specification is incomplete or would benefit from engineering depth, expand it with production-quality detail. Specifically:
+Semantics:
+- local inserts/updates/removals emit `origin: Local`,
+- listener-driven peer discovery emits `origin: Remote`,
+- TTL eviction emits `reason: Expired`,
+- explicit unregister/removal emits `reason: Graceful`.
 
-- **Section 3 (Architecture):** Add a concurrency model explanation — how the Broadcaster, Listener, and Registry interact using Rust async primitives (`tokio`, `Arc<RwLock<>>`, channels, or tasks). Include a component diagram in ASCII or mermaid if it aids clarity.
-- **Section 4 (Data Models):** Flesh out the `AgentInfo` struct with derived traits, visibility modifiers, and any supporting types (e.g., `AgentStatus` enum). Add serialization considerations.
-- **Section 5 (API Surface):** Expand with error types (`ZeroConfError`), the full builder pattern struct, and any event/callback hooks for agent join/leave events.
-- **Section 6 (Edge Cases):** Add implementation guidance for the TTL eviction mechanism — specifically how a background `tokio::task` should sweep the registry and the recommended heartbeat interval vs. TTL ratio.
-- **Add Section 8 — Crate Dependencies:** List the recommended Rust crates (e.g., `mdns-sd`, `tokio`, `uuid`, `serde`) with justification for each.
-- **Add Section 9 — Testing Strategy:** Cover unit tests for the Registry, integration tests using loopback mDNS, and how to simulate agent crash/TTL eviction in tests.
+### 5.5 Error Model
+`ZeroConfError` currently covers:
+- empty required fields,
+- invalid service type,
+- invalid advertised port,
+- invalid mDNS daemon port,
+- invalid heartbeat/TTL relationship,
+- empty metadata keys,
+- missing required TXT properties,
+- invalid TXT property encoding,
+- invalid status strings,
+- wrapped `mdns_sd::Error`,
+- background task join errors.
 
-Write the output as a single, complete, ready-to-commit `specs.md` file in valid Markdown. Do not include any commentary outside the document itself.
+## 6. Registry and Eviction Semantics
+
+### 6.1 Upsert Behavior
+Registry updates produce one of:
+- `Inserted`
+- `Updated`
+- `Refreshed`
+
+Rules:
+- same agent ID + different payload => `Updated`,
+- same payload + newer observation time => `Refreshed`,
+- unknown agent ID => `Inserted`.
+
+### 6.2 TTL Sweep
+The sweeper runs on the configured heartbeat interval and removes peers whose:
+
+```text
+now - last_seen > ttl
+```
+
+Recommended ratio:
+- heartbeat around one quarter of TTL,
+- default implementation uses `30s` heartbeat and `120s` TTL.
+
+This ratio provides:
+- several opportunities to refresh before eviction,
+- tolerance for transient packet loss,
+- bounded cleanup latency.
+
+### 6.3 Graceful vs Crash Leave
+- **Graceful shutdown**: listener should observe a removal and the registry emits `Left { reason: Graceful }`.
+- **Crash / abrupt exit**: no goodbye is guaranteed; stale peers are eventually evicted with `Left { reason: Expired }`.
+
+## 7. Constraints and Edge Cases
+- **Local-network only**: mDNS does not cross routers/subnets by default.
+- **Multiple interfaces**: interface selection is delegated to `mdns-sd`; the current implementation also supports a custom mDNS UDP port for test isolation.
+- **Local address population**: local `ServiceInfo` enables `addr_auto` so the daemon can fill host addresses automatically.
+- **TXT parsing**: remote peers missing required fields are ignored rather than partially inserted.
+- **Dropped event subscribers**: registry event delivery is best-effort through a broadcast channel.
+- **Duplicate announcements**: repeated identical payloads only refresh `last_seen`; they do not emit update events.
+
+## 8. Crate Dependencies
+- **`tokio`**: async runtime, tasks, `watch`, `broadcast`, and timing primitives.
+- **`mdns-sd`**: mDNS/DNS-SD registration, browsing, and service resolution.
+- **`serde`**: serialization for portable wire-friendly types such as `AgentStatus` and `AgentAnnouncement`.
+- **`uuid`**: default agent ID generation.
+- **`thiserror`**: typed library error definitions.
+- **`tracing`**: lightweight observability for runtime tasks and daemon interaction.
+
+## 9. Testing Strategy
+The current testing strategy is split into three layers.
+
+### 9.1 Unit Tests
+Cover:
+- builder validation,
+- config validation,
+- status parsing,
+- TXT conversion and parsing,
+- registry insert/update/refresh behavior,
+- registry removal by instance name,
+- TTL eviction behavior,
+- event origin/reason semantics.
+
+### 9.2 Runtime Tests
+Use a custom mDNS UDP port to avoid depending on the host's system Bonjour/Avahi setup.
+
+Scenarios:
+- local mesh creation and shutdown,
+- local status update propagation,
+- discovery between two mesh nodes on the same custom mDNS port.
+
+### 9.3 Failure Simulation
+Crash-like behavior is simulated by inserting peers with stale `last_seen` timestamps and running eviction logic directly. This avoids flaky host-network assumptions while still validating stale-node cleanup behavior.
+
+## 10. Future Work
+- configurable event channel capacity,
+- richer status vocabularies or user-defined states,
+- optional filtering helpers for roles/capabilities,
+- encrypted or signed metadata payloads,
+- leader election or higher-level coordination protocols,
+- more explicit network-interface controls if required by real deployments.

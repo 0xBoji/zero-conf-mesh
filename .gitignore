@@ -1,13 +1,12 @@
 target/
 
-# local agent/runtime tooling
-.omx/
-.codex/
-.agents/
-
 # editor / OS noise
 .DS_Store
 
 # library projects usually don't commit lockfiles
 Cargo.lock
+
+# local development and instrumentation
+# .omx/, .codex/, .agents/ are allowed to be committed as per user instruction.
+
 

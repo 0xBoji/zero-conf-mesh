@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use tokio::sync::{RwLock, broadcast};
 
-use crate::{events::AgentEvent, types::AgentAnnouncement, types::AgentInfo};
+use crate::{
+    events::{AgentEvent, DepartureReason, EventOrigin},
+    types::{AgentAnnouncement, AgentInfo},
+};
 
 const DEFAULT_EVENT_CAPACITY: usize = 256;
 
@@ -62,13 +65,36 @@ impl Registry {
 
     /// Inserts or updates an agent based on its unique identifier.
     pub async fn upsert(&self, announcement: AgentAnnouncement) -> RegistryUpsert {
-        self.upsert_at(announcement, Instant::now()).await
+        self.upsert_remote(announcement).await
     }
 
+    /// Inserts or updates the local agent and emits local-origin events.
+    pub async fn upsert_local(&self, announcement: AgentAnnouncement) -> RegistryUpsert {
+        self.upsert_with_origin_at(announcement, Instant::now(), EventOrigin::Local)
+            .await
+    }
+
+    /// Inserts or updates a remote agent and emits remote-origin events.
+    pub async fn upsert_remote(&self, announcement: AgentAnnouncement) -> RegistryUpsert {
+        self.upsert_with_origin_at(announcement, Instant::now(), EventOrigin::Remote)
+            .await
+    }
+
+    #[cfg(test)]
     pub(crate) async fn upsert_at(
         &self,
         announcement: AgentAnnouncement,
         seen_at: Instant,
+    ) -> RegistryUpsert {
+        self.upsert_with_origin_at(announcement, seen_at, EventOrigin::Remote)
+            .await
+    }
+
+    pub(crate) async fn upsert_with_origin_at(
+        &self,
+        announcement: AgentAnnouncement,
+        seen_at: Instant,
+        origin: EventOrigin,
     ) -> RegistryUpsert {
         let incoming = announcement.into_agent_info(seen_at);
         let mut registry = self.inner.write().await;
@@ -84,6 +110,7 @@ impl Registry {
                     let event = AgentEvent::Updated {
                         previous: previous.clone(),
                         current: incoming.clone(),
+                        origin,
                     };
                     let _ = self.events_tx.send(event);
                     RegistryUpsert::Updated {
@@ -94,7 +121,10 @@ impl Registry {
             }
             None => {
                 registry.insert(incoming.id().to_owned(), incoming.clone());
-                let _ = self.events_tx.send(AgentEvent::Joined(incoming.clone()));
+                let _ = self.events_tx.send(AgentEvent::Joined {
+                    agent: incoming.clone(),
+                    origin,
+                });
                 RegistryUpsert::Inserted(incoming)
             }
         }
@@ -102,10 +132,59 @@ impl Registry {
 
     /// Removes an agent by identifier.
     pub async fn remove(&self, agent_id: &str) -> Option<AgentInfo> {
+        self.remove_remote(agent_id).await
+    }
+
+    /// Removes the local agent by identifier and emits a local-origin leave event.
+    pub async fn remove_local(&self, agent_id: &str) -> Option<AgentInfo> {
+        self.remove_with_origin(agent_id, EventOrigin::Local, DepartureReason::Graceful)
+            .await
+    }
+
+    /// Removes a remote agent by identifier and emits a graceful remote leave event.
+    pub async fn remove_remote(&self, agent_id: &str) -> Option<AgentInfo> {
+        self.remove_with_origin(agent_id, EventOrigin::Remote, DepartureReason::Graceful)
+            .await
+    }
+
+    async fn remove_with_origin(
+        &self,
+        agent_id: &str,
+        origin: EventOrigin,
+        reason: DepartureReason,
+    ) -> Option<AgentInfo> {
         let mut registry = self.inner.write().await;
         let removed = registry.remove(agent_id);
         if let Some(agent) = &removed {
-            let _ = self.events_tx.send(AgentEvent::Left(agent.clone()));
+            let _ = self.events_tx.send(AgentEvent::Left {
+                agent: agent.clone(),
+                origin,
+                reason,
+            });
+        }
+        removed
+    }
+
+    /// Removes an agent by DNS-SD instance name.
+    pub async fn remove_by_instance_name(&self, instance_name: &str) -> Option<AgentInfo> {
+        self.remove_remote_by_instance_name(instance_name).await
+    }
+
+    /// Removes a remote agent by DNS-SD instance name.
+    pub async fn remove_remote_by_instance_name(&self, instance_name: &str) -> Option<AgentInfo> {
+        let mut registry = self.inner.write().await;
+        let agent_id = registry
+            .iter()
+            .find(|(_, agent)| agent.instance_name() == instance_name)
+            .map(|(agent_id, _)| agent_id.clone())?;
+
+        let removed = registry.remove(&agent_id);
+        if let Some(agent) = &removed {
+            let _ = self.events_tx.send(AgentEvent::Left {
+                agent: agent.clone(),
+                origin: EventOrigin::Remote,
+                reason: DepartureReason::Graceful,
+            });
         }
         removed
     }
@@ -152,7 +231,11 @@ impl Registry {
         let mut evicted = Vec::with_capacity(stale_ids.len());
         for agent_id in stale_ids {
             if let Some(agent) = registry.remove(&agent_id) {
-                let _ = self.events_tx.send(AgentEvent::Expired(agent.clone()));
+                let _ = self.events_tx.send(AgentEvent::Left {
+                    agent: agent.clone(),
+                    origin: EventOrigin::Remote,
+                    reason: DepartureReason::Expired,
+                });
                 evicted.push(agent);
             }
         }
@@ -251,5 +334,50 @@ mod tests {
         assert_eq!(evicted[0].id(), "agent-b");
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].id(), "agent-a");
+    }
+
+    #[tokio::test]
+    async fn registry_should_remove_by_instance_name() {
+        let registry = Registry::new(Duration::from_secs(120));
+        registry
+            .upsert(announcement("agent-a", "alpha", AgentStatus::Idle))
+            .await;
+
+        let removed = registry
+            .remove_by_instance_name("agent-a._agent-mesh._tcp.local.")
+            .await;
+
+        assert!(removed.is_some());
+        assert!(registry.get("agent-a").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn registry_should_emit_origin_and_reason_metadata() {
+        let registry = Registry::new(Duration::from_secs(120));
+        let mut events = registry.subscribe();
+
+        registry
+            .upsert_local(announcement("agent-a", "alpha", AgentStatus::Idle))
+            .await;
+        registry.remove_local("agent-a").await;
+
+        let joined = events.recv().await.expect("joined event should be sent");
+        let left = events.recv().await.expect("left event should be sent");
+
+        assert!(matches!(
+            joined,
+            AgentEvent::Joined {
+                origin: EventOrigin::Local,
+                ..
+            }
+        ));
+        assert!(matches!(
+            left,
+            AgentEvent::Left {
+                origin: EventOrigin::Local,
+                reason: DepartureReason::Graceful,
+                ..
+            }
+        ));
     }
 }

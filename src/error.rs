@@ -22,6 +22,9 @@ pub enum ZeroConfError {
     /// Port zero is not a valid advertised service port.
     #[error("port must be greater than zero")]
     InvalidPort,
+    /// Port zero is not a valid mDNS daemon UDP port.
+    #[error("mDNS port must be greater than zero")]
+    InvalidMdnsPort,
     /// TTL must be strictly greater than the heartbeat interval.
     #[error("ttl ({ttl:?}) must be greater than heartbeat interval ({heartbeat_interval:?})")]
     InvalidTiming {

@@ -10,18 +10,24 @@ use crate::{
 
 /// Default DNS-SD service type advertised by the crate.
 pub const DEFAULT_SERVICE_TYPE: &str = "_agent-mesh._tcp.local.";
+/// Default UDP port used by the embedded mDNS daemon.
+pub const DEFAULT_MDNS_PORT: u16 = mdns_sd::MDNS_PORT;
 /// Default interval between local refresh heartbeats.
 pub const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 /// Default TTL used for stale-peer eviction.
 pub const DEFAULT_TTL: Duration = Duration::from_secs(120);
 
 /// Immutable runtime configuration for a mesh node.
+///
+/// This is usually constructed via [`crate::ZeroConfMeshBuilder`], but can also
+/// be created directly for advanced embedding and testing scenarios.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ZeroConfConfig {
     agent_id: String,
     role: String,
     project: String,
     port: u16,
+    mdns_port: u16,
     service_type: String,
     initial_status: AgentStatus,
     heartbeat_interval: Duration,
@@ -43,6 +49,7 @@ impl ZeroConfConfig {
         role: impl Into<String>,
         project: impl Into<String>,
         port: u16,
+        mdns_port: u16,
         service_type: impl Into<String>,
         initial_status: AgentStatus,
         heartbeat_interval: Duration,
@@ -54,6 +61,7 @@ impl ZeroConfConfig {
             role: normalize_required(role.into(), "role")?,
             project: normalize_required(project.into(), "project")?,
             port,
+            mdns_port,
             service_type: normalize_required(service_type.into(), "service_type")?,
             initial_status,
             heartbeat_interval,
@@ -72,6 +80,10 @@ impl ZeroConfConfig {
     pub fn validate(&self) -> Result<(), ZeroConfError> {
         if self.port == 0 {
             return Err(ZeroConfError::InvalidPort);
+        }
+
+        if self.mdns_port == 0 {
+            return Err(ZeroConfError::InvalidMdnsPort);
         }
 
         if self.ttl <= self.heartbeat_interval {
@@ -118,6 +130,12 @@ impl ZeroConfConfig {
         self.port
     }
 
+    /// Returns the UDP port used by the internal mDNS daemon.
+    #[must_use]
+    pub const fn mdns_port(&self) -> u16 {
+        self.mdns_port
+    }
+
     /// Returns the DNS-SD service type.
     #[must_use]
     pub fn service_type(&self) -> &str {
@@ -152,6 +170,12 @@ impl ZeroConfConfig {
     #[must_use]
     pub fn instance_name(&self) -> String {
         format!("{}.{}", self.agent_id, self.service_type)
+    }
+
+    /// Returns the host name used for the local mDNS service record.
+    #[must_use]
+    pub fn host_name(&self) -> String {
+        format!("{}.local.", self.agent_id)
     }
 
     pub(crate) fn local_announcement(&self) -> Result<AgentAnnouncement, ZeroConfError> {
@@ -204,6 +228,7 @@ mod tests {
             "coder",
             "proj",
             0,
+            DEFAULT_MDNS_PORT,
             DEFAULT_SERVICE_TYPE,
             AgentStatus::Idle,
             DEFAULT_HEARTBEAT_INTERVAL,
@@ -222,6 +247,7 @@ mod tests {
             "coder",
             "proj",
             8080,
+            DEFAULT_MDNS_PORT,
             DEFAULT_SERVICE_TYPE,
             AgentStatus::Idle,
             Duration::from_secs(30),
@@ -234,5 +260,24 @@ mod tests {
             err.to_string()
                 .contains("ttl (30s) must be greater than heartbeat interval (30s)")
         );
+    }
+
+    #[test]
+    fn config_should_reject_zero_mdns_port() {
+        let err = ZeroConfConfig::new(
+            "agent-1",
+            "coder",
+            "proj",
+            8080,
+            0,
+            DEFAULT_SERVICE_TYPE,
+            AgentStatus::Idle,
+            DEFAULT_HEARTBEAT_INTERVAL,
+            DEFAULT_TTL,
+            AgentMetadata::new(),
+        )
+        .expect_err("mDNS port zero must be rejected");
+
+        assert_eq!(err.to_string(), "mDNS port must be greater than zero");
     }
 }
