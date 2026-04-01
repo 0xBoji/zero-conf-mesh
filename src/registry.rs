@@ -215,6 +215,46 @@ impl Registry {
         agents
     }
 
+    /// Returns all known agents currently attached to a branch or workstream.
+    pub async fn get_all_by_branch(&self, branch: &str) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| agent.branch() == branch)
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
+    /// Returns all known agents matching both project and branch.
+    pub async fn get_all_by_project_and_branch(
+        &self,
+        project: &str,
+        branch: &str,
+    ) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| agent.project() == project && agent.branch() == branch)
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
+    /// Returns all known agents matching a specific status.
+    pub async fn get_all_by_status(&self, status: crate::types::AgentStatus) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| agent.status() == status)
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
     /// Sweeps the registry and evicts stale peers.
     pub async fn evict_stale(&self) -> Vec<AgentInfo> {
         self.evict_stale_at(Instant::now()).await
@@ -266,6 +306,7 @@ mod tests {
             agent_id,
             "coder",
             project,
+            "main",
             status,
             8080,
             vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
@@ -290,6 +331,29 @@ mod tests {
         assert_eq!(alpha.len(), 1);
         assert_eq!(alpha[0].id(), "agent-a");
         assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn registry_should_filter_by_branch_and_status() {
+        let registry = Registry::new(Duration::from_secs(120));
+        registry
+            .upsert(announcement("agent-a", "alpha", AgentStatus::Idle))
+            .await;
+        registry
+            .upsert(announcement("agent-b", "beta", AgentStatus::Busy))
+            .await;
+
+        let main = registry.get_all_by_branch("main").await;
+        let alpha_main = registry
+            .get_all_by_project_and_branch("alpha", "main")
+            .await;
+        let busy = registry.get_all_by_status(AgentStatus::Busy).await;
+
+        assert_eq!(main.len(), 2);
+        assert_eq!(alpha_main.len(), 1);
+        assert_eq!(alpha_main[0].id(), "agent-a");
+        assert_eq!(busy.len(), 1);
+        assert_eq!(busy[0].id(), "agent-b");
     }
 
     #[tokio::test]

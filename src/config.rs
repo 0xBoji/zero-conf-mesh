@@ -3,8 +3,9 @@ use std::time::Duration;
 use crate::{
     error::ZeroConfError,
     types::{
-        AGENT_ID_METADATA_KEY, AGENT_PROJECT_METADATA_KEY, AGENT_ROLE_METADATA_KEY,
-        AGENT_STATUS_METADATA_KEY, AgentAnnouncement, AgentMetadata, AgentStatus,
+        AGENT_BRANCH_METADATA_KEY, AGENT_ID_METADATA_KEY, AGENT_PROJECT_METADATA_KEY,
+        AGENT_ROLE_METADATA_KEY, AGENT_STATUS_METADATA_KEY, AgentAnnouncement, AgentMetadata,
+        AgentStatus,
     },
 };
 
@@ -26,6 +27,7 @@ pub struct ZeroConfConfig {
     agent_id: String,
     role: String,
     project: String,
+    branch: String,
     port: u16,
     mdns_port: u16,
     service_type: String,
@@ -48,6 +50,7 @@ impl ZeroConfConfig {
         agent_id: impl Into<String>,
         role: impl Into<String>,
         project: impl Into<String>,
+        branch: impl Into<String>,
         port: u16,
         mdns_port: u16,
         service_type: impl Into<String>,
@@ -60,6 +63,7 @@ impl ZeroConfConfig {
             agent_id: normalize_required(agent_id.into(), "agent_id")?,
             role: normalize_required(role.into(), "role")?,
             project: normalize_required(project.into(), "project")?,
+            branch: normalize_required(branch.into(), "branch")?,
             port,
             mdns_port,
             service_type: normalize_required(service_type.into(), "service_type")?,
@@ -124,6 +128,12 @@ impl ZeroConfConfig {
         &self.project
     }
 
+    /// Returns the configured branch or workstream identifier.
+    #[must_use]
+    pub fn branch(&self) -> &str {
+        &self.branch
+    }
+
     /// Returns the advertised listening port.
     #[must_use]
     pub const fn port(&self) -> u16 {
@@ -183,6 +193,7 @@ impl ZeroConfConfig {
         metadata.insert(AGENT_ID_METADATA_KEY.to_owned(), self.agent_id.clone());
         metadata.insert(AGENT_ROLE_METADATA_KEY.to_owned(), self.role.clone());
         metadata.insert(AGENT_PROJECT_METADATA_KEY.to_owned(), self.project.clone());
+        metadata.insert(AGENT_BRANCH_METADATA_KEY.to_owned(), self.branch.clone());
         metadata.insert(
             AGENT_STATUS_METADATA_KEY.to_owned(),
             self.initial_status.as_str().to_owned(),
@@ -193,6 +204,7 @@ impl ZeroConfConfig {
             self.agent_id.clone(),
             self.role.clone(),
             self.project.clone(),
+            self.branch.clone(),
             self.initial_status,
             self.port,
             Vec::new(),
@@ -227,6 +239,7 @@ mod tests {
             "agent-1",
             "coder",
             "proj",
+            "main",
             0,
             DEFAULT_MDNS_PORT,
             DEFAULT_SERVICE_TYPE,
@@ -246,6 +259,7 @@ mod tests {
             "agent-1",
             "coder",
             "proj",
+            "main",
             8080,
             DEFAULT_MDNS_PORT,
             DEFAULT_SERVICE_TYPE,
@@ -268,6 +282,7 @@ mod tests {
             "agent-1",
             "coder",
             "proj",
+            "main",
             8080,
             0,
             DEFAULT_SERVICE_TYPE,

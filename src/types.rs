@@ -11,6 +11,8 @@ pub const AGENT_ID_METADATA_KEY: &str = "agent_id";
 pub const AGENT_ROLE_METADATA_KEY: &str = "role";
 /// Metadata key used for the advertised project name.
 pub const AGENT_PROJECT_METADATA_KEY: &str = "current_project";
+/// Metadata key used for the advertised git/work branch name.
+pub const AGENT_BRANCH_METADATA_KEY: &str = "current_branch";
 /// Metadata key used for the advertised agent status.
 pub const AGENT_STATUS_METADATA_KEY: &str = "status";
 
@@ -69,6 +71,7 @@ pub struct AgentAnnouncement {
     agent_id: String,
     role: String,
     project: String,
+    branch: String,
     status: AgentStatus,
     port: u16,
     addresses: Vec<IpAddr>,
@@ -89,6 +92,7 @@ impl AgentAnnouncement {
         agent_id: impl Into<String>,
         role: impl Into<String>,
         project: impl Into<String>,
+        branch: impl Into<String>,
         status: AgentStatus,
         port: u16,
         addresses: Vec<IpAddr>,
@@ -98,6 +102,7 @@ impl AgentAnnouncement {
         let agent_id = normalize_required(agent_id.into(), "agent_id")?;
         let role = normalize_required(role.into(), "role")?;
         let project = normalize_required(project.into(), "project")?;
+        let branch = normalize_required(branch.into(), "branch")?;
 
         if port == 0 {
             return Err(ZeroConfError::InvalidPort);
@@ -112,6 +117,7 @@ impl AgentAnnouncement {
             agent_id,
             role,
             project,
+            branch,
             status,
             port,
             addresses,
@@ -141,6 +147,12 @@ impl AgentAnnouncement {
     #[must_use]
     pub fn project(&self) -> &str {
         &self.project
+    }
+
+    /// Returns the declared branch or workstream identifier.
+    #[must_use]
+    pub fn branch(&self) -> &str {
+        &self.branch
     }
 
     /// Returns the current operational status.
@@ -183,6 +195,7 @@ impl AgentAnnouncement {
         metadata.insert(AGENT_ID_METADATA_KEY.to_owned(), self.agent_id.clone());
         metadata.insert(AGENT_ROLE_METADATA_KEY.to_owned(), self.role.clone());
         metadata.insert(AGENT_PROJECT_METADATA_KEY.to_owned(), self.project.clone());
+        metadata.insert(AGENT_BRANCH_METADATA_KEY.to_owned(), self.branch.clone());
         metadata.insert(
             AGENT_STATUS_METADATA_KEY.to_owned(),
             self.status.as_str().to_owned(),
@@ -244,6 +257,7 @@ impl AgentAnnouncement {
         let agent_id = required_metadata(&metadata, AGENT_ID_METADATA_KEY)?.to_owned();
         let role = required_metadata(&metadata, AGENT_ROLE_METADATA_KEY)?.to_owned();
         let project = required_metadata(&metadata, AGENT_PROJECT_METADATA_KEY)?.to_owned();
+        let branch = required_metadata(&metadata, AGENT_BRANCH_METADATA_KEY)?.to_owned();
         let status = required_metadata(&metadata, AGENT_STATUS_METADATA_KEY)?.parse()?;
 
         Self::new(
@@ -251,6 +265,7 @@ impl AgentAnnouncement {
             agent_id,
             role,
             project,
+            branch,
             status,
             port,
             addresses,
@@ -264,6 +279,7 @@ impl AgentAnnouncement {
             id: self.agent_id,
             role: self.role,
             project: self.project,
+            branch: self.branch,
             status: self.status,
             port: self.port,
             addresses: self.addresses,
@@ -280,6 +296,7 @@ pub struct AgentInfo {
     id: String,
     role: String,
     project: String,
+    branch: String,
     status: AgentStatus,
     port: u16,
     addresses: Vec<IpAddr>,
@@ -310,6 +327,12 @@ impl AgentInfo {
     #[must_use]
     pub fn project(&self) -> &str {
         &self.project
+    }
+
+    /// Returns the branch or workstream identifier.
+    #[must_use]
+    pub fn branch(&self) -> &str {
+        &self.branch
     }
 
     /// Returns the current operational status.
@@ -347,6 +370,7 @@ impl AgentInfo {
             && self.id == other.id
             && self.role == other.role
             && self.project == other.project
+            && self.branch == other.branch
             && self.status == other.status
             && self.port == other.port
             && self.addresses == other.addresses
@@ -418,6 +442,7 @@ mod tests {
             "agent-1",
             "reviewer",
             "alpha",
+            "main",
             AgentStatus::Busy,
             8080,
             vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
@@ -453,6 +478,7 @@ mod tests {
             ("agent_id", "agent-1"),
             ("role", "reviewer"),
             ("current_project", "alpha"),
+            ("current_branch", "main"),
             ("status", "busy"),
             ("capability", "review"),
         ]
@@ -470,6 +496,7 @@ mod tests {
         assert_eq!(announcement.agent_id(), "agent-1");
         assert_eq!(announcement.role(), "reviewer");
         assert_eq!(announcement.project(), "alpha");
+        assert_eq!(announcement.branch(), "main");
         assert_eq!(announcement.status(), AgentStatus::Busy);
         assert_eq!(
             announcement.metadata().get("capability"),
@@ -482,6 +509,7 @@ mod tests {
         let properties = [
             ("agent_id", "agent-1"),
             ("role", "reviewer"),
+            ("current_branch", "main"),
             ("status", "busy"),
         ]
         .as_slice()
@@ -500,6 +528,56 @@ mod tests {
             ZeroConfError::MissingTxtProperty {
                 key: AGENT_PROJECT_METADATA_KEY
             }
+        ));
+    }
+
+    #[test]
+    fn agent_announcement_should_reject_invalid_status_txt_property() {
+        let properties = [
+            ("agent_id", "agent-1"),
+            ("role", "reviewer"),
+            ("current_project", "alpha"),
+            ("current_branch", "main"),
+            ("status", "offline"),
+        ]
+        .as_slice()
+        .into_txt_properties();
+
+        let err = AgentAnnouncement::from_txt_properties(
+            "agent-1._agent-mesh._tcp.local.",
+            8080,
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            &properties,
+        )
+        .expect_err("invalid status should fail");
+
+        assert!(matches!(err, ZeroConfError::InvalidStatus { .. }));
+    }
+
+    #[test]
+    fn agent_announcement_should_reject_invalid_utf8_txt_property() {
+        let properties = vec![
+            TxtProperty::from(("agent_id", "agent-1")),
+            TxtProperty::from(("role", "reviewer")),
+            TxtProperty::from(("current_project", "alpha")),
+            TxtProperty::from(("current_branch", "main")),
+            TxtProperty::from(("status", "busy")),
+            TxtProperty::from(("capability", vec![0xff, 0xfe, 0xfd])),
+        ]
+        .into_txt_properties();
+
+        let err = AgentAnnouncement::from_txt_properties(
+            "agent-1._agent-mesh._tcp.local.",
+            8080,
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            &properties,
+        )
+        .expect_err("invalid utf8 metadata should fail");
+
+        assert!(matches!(
+            err,
+            ZeroConfError::InvalidTxtPropertyEncoding { key }
+            if key == "capability"
         ));
     }
 }

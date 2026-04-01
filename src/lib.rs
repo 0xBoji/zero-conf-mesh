@@ -23,6 +23,7 @@
 //!     .agent_id("agent-01")
 //!     .role("reviewer")
 //!     .project("alpha")
+//!     .branch("main")
 //!     .port(8080)
 //!     .build()
 //!     .await?;
@@ -55,6 +56,7 @@ pub use events::{AgentEvent, DepartureReason, EventOrigin};
 pub use mesh::ZeroConfMesh;
 pub use registry::{Registry, RegistryUpsert};
 pub use types::{
-    AGENT_ID_METADATA_KEY, AGENT_PROJECT_METADATA_KEY, AGENT_ROLE_METADATA_KEY,
-    AGENT_STATUS_METADATA_KEY, AgentAnnouncement, AgentInfo, AgentMetadata, AgentStatus,
+    AGENT_BRANCH_METADATA_KEY, AGENT_ID_METADATA_KEY, AGENT_PROJECT_METADATA_KEY,
+    AGENT_ROLE_METADATA_KEY, AGENT_STATUS_METADATA_KEY, AgentAnnouncement, AgentInfo,
+    AgentMetadata, AgentStatus,
 };

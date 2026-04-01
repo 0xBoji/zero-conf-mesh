@@ -24,6 +24,7 @@ use crate::{
 ///     .agent_id("agent-01")
 ///     .role("coder")
 ///     .project("alpha")
+///     .branch("main")
 ///     .port(8080)
 ///     .build()
 ///     .await?;
@@ -37,6 +38,7 @@ pub struct ZeroConfMeshBuilder {
     agent_id: Option<String>,
     role: String,
     project: String,
+    branch: String,
     port: Option<u16>,
     mdns_port: u16,
     service_type: String,
@@ -52,6 +54,7 @@ impl Default for ZeroConfMeshBuilder {
             agent_id: None,
             role: "agent".to_owned(),
             project: "default".to_owned(),
+            branch: "unknown".to_owned(),
             port: None,
             mdns_port: DEFAULT_MDNS_PORT,
             service_type: DEFAULT_SERVICE_TYPE.to_owned(),
@@ -82,6 +85,13 @@ impl ZeroConfMeshBuilder {
     #[must_use]
     pub fn project(mut self, project: impl Into<String>) -> Self {
         self.project = project.into();
+        self
+    }
+
+    /// Sets the current branch or workstream identifier to advertise.
+    #[must_use]
+    pub fn branch(mut self, branch: impl Into<String>) -> Self {
+        self.branch = branch.into();
         self
     }
 
@@ -158,6 +168,7 @@ impl ZeroConfMeshBuilder {
             agent_id,
             self.role,
             self.project,
+            self.branch,
             port,
             self.mdns_port,
             self.service_type,
@@ -178,6 +189,7 @@ mod tests {
         let mesh = ZeroConfMesh::builder()
             .role("reviewer")
             .project("alpha")
+            .branch("main")
             .port(8080)
             .mdns_port(54_541)
             .build()
@@ -193,6 +205,7 @@ mod tests {
         let err = ZeroConfMesh::builder()
             .role("reviewer")
             .project("alpha")
+            .branch("main")
             .build()
             .await
             .expect_err("missing port should be rejected");

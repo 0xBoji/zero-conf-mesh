@@ -48,3 +48,106 @@ pub enum AgentEvent {
         reason: DepartureReason,
     },
 }
+
+impl AgentEvent {
+    /// Returns the primary agent snapshot associated with this event.
+    #[must_use]
+    pub fn agent(&self) -> &AgentInfo {
+        match self {
+            Self::Joined { agent, .. } | Self::Left { agent, .. } => agent,
+            Self::Updated { current, .. } => current,
+        }
+    }
+
+    /// Returns the event origin.
+    #[must_use]
+    pub const fn origin(&self) -> EventOrigin {
+        match self {
+            Self::Joined { origin, .. }
+            | Self::Updated { origin, .. }
+            | Self::Left { origin, .. } => *origin,
+        }
+    }
+
+    /// Returns the previous snapshot for update events.
+    #[must_use]
+    pub const fn previous(&self) -> Option<&AgentInfo> {
+        match self {
+            Self::Updated { previous, .. } => Some(previous),
+            Self::Joined { .. } | Self::Left { .. } => None,
+        }
+    }
+
+    /// Returns the departure reason for leave events.
+    #[must_use]
+    pub const fn departure_reason(&self) -> Option<DepartureReason> {
+        match self {
+            Self::Left { reason, .. } => Some(*reason),
+            Self::Joined { .. } | Self::Updated { .. } => None,
+        }
+    }
+
+    /// Returns true when this event describes a join.
+    #[must_use]
+    pub const fn is_joined(&self) -> bool {
+        matches!(self, Self::Joined { .. })
+    }
+
+    /// Returns true when this event describes an update.
+    #[must_use]
+    pub const fn is_updated(&self) -> bool {
+        matches!(self, Self::Updated { .. })
+    }
+
+    /// Returns true when this event describes a leave.
+    #[must_use]
+    pub const fn is_left(&self) -> bool {
+        matches!(self, Self::Left { .. })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        time::Instant,
+    };
+
+    use super::*;
+    use crate::types::{AgentAnnouncement, AgentMetadata, AgentStatus};
+
+    fn agent(id: &str) -> AgentInfo {
+        AgentAnnouncement::new(
+            format!("{id}._agent-mesh._tcp.local."),
+            id,
+            "coder",
+            "alpha",
+            "main",
+            AgentStatus::Idle,
+            8080,
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            AgentMetadata::new(),
+        )
+        .expect("announcement should be valid")
+        .into_agent_info(Instant::now())
+    }
+
+    #[test]
+    fn agent_event_helpers_should_expose_common_fields() {
+        let previous = agent("agent-a");
+        let current = agent("agent-b");
+        let event = AgentEvent::Updated {
+            previous,
+            current,
+            origin: EventOrigin::Remote,
+        };
+
+        assert_eq!(event.agent().id(), "agent-b");
+        assert_eq!(event.origin(), EventOrigin::Remote);
+        assert_eq!(event.previous().map(|agent| agent.id()), Some("agent-a"));
+        assert_eq!(event.departure_reason(), None);
+        assert!(event.is_updated());
+        assert!(!event.is_joined());
+        assert!(!event.is_left());
+    }
+}

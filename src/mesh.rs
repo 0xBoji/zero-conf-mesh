@@ -34,6 +34,7 @@ use crate::{
 ///     .agent_id("agent-01")
 ///     .role("worker")
 ///     .project("alpha")
+///     .branch("main")
 ///     .port(8080)
 ///     .build()
 ///     .await?;
@@ -169,6 +170,35 @@ impl ZeroConfMesh {
         self.registry.get_all_by_project(project).await
     }
 
+    /// Returns all known agents for a specific branch or workstream.
+    pub async fn agents_by_branch(&self, branch: &str) -> Vec<crate::types::AgentInfo> {
+        self.registry.get_all_by_branch(branch).await
+    }
+
+    /// Returns all known agents matching both project and branch.
+    pub async fn agents_by_project_and_branch(
+        &self,
+        project: &str,
+        branch: &str,
+    ) -> Vec<crate::types::AgentInfo> {
+        self.registry
+            .get_all_by_project_and_branch(project, branch)
+            .await
+    }
+
+    /// Returns all known agents matching a specific status.
+    pub async fn agents_by_status(
+        &self,
+        status: crate::types::AgentStatus,
+    ) -> Vec<crate::types::AgentInfo> {
+        self.registry.get_all_by_status(status).await
+    }
+
+    /// Convenience alias for branch-focused queries.
+    pub async fn who_is_on_branch(&self, branch: &str) -> Vec<crate::types::AgentInfo> {
+        self.agents_by_branch(branch).await
+    }
+
     /// Subscribes to registry lifecycle events.
     ///
     /// # Example
@@ -181,6 +211,7 @@ impl ZeroConfMesh {
     ///     .agent_id("agent-01")
     ///     .role("worker")
     ///     .project("alpha")
+    ///     .branch("main")
     ///     .port(8080)
     ///     .build()
     ///     .await?;
@@ -367,6 +398,7 @@ mod tests {
             .agent_id("agent-1")
             .role("coder")
             .project("alpha")
+            .branch("main")
             .port(8080)
             .mdns_port(available_udp_port())
             .heartbeat_interval(Duration::from_secs(30))
@@ -395,6 +427,7 @@ mod tests {
             .agent_id("agent-1")
             .role("coder")
             .project("alpha")
+            .branch("main")
             .port(8080)
             .mdns_port(available_udp_port())
             .build()
@@ -404,11 +437,18 @@ mod tests {
         let local = mesh.local_agent().await;
         let agents = mesh.agents().await;
         let alpha = mesh.agents_by_project("alpha").await;
+        let main = mesh.agents_by_branch("main").await;
+        let alpha_main = mesh.agents_by_project_and_branch("alpha", "main").await;
+        let idle = mesh.agents_by_status(AgentStatus::Idle).await;
 
         assert_eq!(mesh.local_agent_id(), "agent-1");
         assert_eq!(local.agent_id(), "agent-1");
+        assert_eq!(local.branch(), "main");
         assert_eq!(agents.len(), 1);
         assert_eq!(alpha.len(), 1);
+        assert_eq!(main.len(), 1);
+        assert_eq!(alpha_main.len(), 1);
+        assert_eq!(idle.len(), 1);
 
         mesh.shutdown().await.expect("shutdown should succeed");
     }
@@ -439,10 +479,12 @@ mod tests {
             .agent_id("agent-a")
             .role("coder")
             .project("alpha")
+            .branch("main")
             .port(8081)
             .mdns_port(mdns_port)
             .heartbeat_interval(Duration::from_millis(200))
             .ttl(Duration::from_secs(2))
+            .metadata("capability", "implementation")
             .build()
             .await
             .expect("mesh a should build");
@@ -451,10 +493,12 @@ mod tests {
             .agent_id("agent-b")
             .role("reviewer")
             .project("alpha")
+            .branch("main")
             .port(8082)
             .mdns_port(mdns_port)
             .heartbeat_interval(Duration::from_millis(200))
             .ttl(Duration::from_secs(2))
+            .metadata("capability", "review")
             .build()
             .await
             .expect("mesh b should build");
@@ -484,11 +528,123 @@ mod tests {
         assert!(discovered, "both peers should discover each other");
     }
 
+    #[tokio::test]
+    async fn mesh_should_propagate_custom_metadata_across_discovery() {
+        let mdns_port = available_udp_port();
+        let mesh_a = ZeroConfMesh::builder()
+            .agent_id("agent-a")
+            .role("coder")
+            .project("alpha")
+            .branch("feature/mesh")
+            .port(8081)
+            .mdns_port(mdns_port)
+            .heartbeat_interval(Duration::from_millis(200))
+            .ttl(Duration::from_secs(2))
+            .metadata("capability", "implementation")
+            .build()
+            .await
+            .expect("mesh a should build");
+
+        let mesh_b = ZeroConfMesh::builder()
+            .agent_id("agent-b")
+            .role("reviewer")
+            .project("alpha")
+            .branch("main")
+            .port(8082)
+            .mdns_port(mdns_port)
+            .heartbeat_interval(Duration::from_millis(200))
+            .ttl(Duration::from_secs(2))
+            .metadata("capability", "review")
+            .build()
+            .await
+            .expect("mesh b should build");
+
+        let peer = wait_for_agent(&mesh_a, "agent-b").await;
+
+        mesh_a
+            .shutdown()
+            .await
+            .expect("mesh a shutdown should succeed");
+        mesh_b
+            .shutdown()
+            .await
+            .expect("mesh b shutdown should succeed");
+
+        let peer = peer.expect("agent-b should be discovered");
+        assert_eq!(
+            peer.metadata().get("capability"),
+            Some(&"review".to_owned())
+        );
+        assert_eq!(peer.branch(), "main");
+    }
+
+    #[tokio::test]
+    async fn mesh_shutdown_should_emit_local_update_then_local_left_in_order() {
+        let mesh = ZeroConfMesh::builder()
+            .agent_id("agent-1")
+            .role("coder")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .mdns_port(available_udp_port())
+            .build()
+            .await
+            .expect("mesh should build");
+
+        let mut events = mesh.subscribe();
+
+        mesh.update_status(AgentStatus::Busy)
+            .await
+            .expect("status update should succeed");
+        mesh.shutdown().await.expect("shutdown should succeed");
+
+        let first = events
+            .recv()
+            .await
+            .expect("first event should be available");
+        let second = events
+            .recv()
+            .await
+            .expect("second event should be available");
+
+        assert!(matches!(
+            first,
+            AgentEvent::Updated {
+                origin: crate::EventOrigin::Local,
+                ..
+            }
+        ));
+        assert!(matches!(
+            second,
+            AgentEvent::Left {
+                origin: crate::EventOrigin::Local,
+                reason: crate::DepartureReason::Graceful,
+                ..
+            }
+        ));
+    }
+
     fn available_udp_port() -> u16 {
         UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
             .expect("ephemeral UDP port should be allocated")
             .local_addr()
             .expect("local address should be available")
             .port()
+    }
+
+    async fn wait_for_agent(
+        mesh: &ZeroConfMesh,
+        agent_id: &str,
+    ) -> Option<crate::types::AgentInfo> {
+        let deadline = time::Instant::now() + Duration::from_secs(5);
+        while time::Instant::now() < deadline {
+            if let Some(agent) = mesh.get_agent(agent_id).await {
+                return Some(agent);
+            }
+
+            time::sleep(Duration::from_millis(100)).await;
+        }
+
+        None
     }
 }
