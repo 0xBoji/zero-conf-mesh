@@ -17,6 +17,13 @@ Current implementation includes:
 
 This crate is intended for **local-network use only**. It does not provide cross-subnet discovery, authentication, encryption, or consensus.
 
+The core advertised TXT fields are:
+- `agent_id`
+- `current_project`
+- `current_branch`
+
+The current implementation also keeps richer metadata such as `role` and `status` so nodes can answer “who is doing what?” on the LAN.
+
 ## Why this crate?
 
 `zero-conf-mesh` is useful when you want multiple local agents or tools to:
@@ -34,6 +41,7 @@ Typical use cases:
 ## Features
 
 - **Minimal async API** via `ZeroConfMesh`
+- **Branch/project/status queries** for “who is doing what?”
 - **Typed metadata and status**
 - **Graceful shutdown** with unregister flow
 - **Crash-tolerant cleanup** via TTL sweeps
@@ -62,6 +70,7 @@ let mesh = ZeroConfMesh::builder()
     .agent_id("agent-01")
     .role("reviewer")
     .project("alpha")
+    .branch("main")
     .port(8080)
     .build()
     .await?;
@@ -70,10 +79,13 @@ mesh.update_status(AgentStatus::Busy).await?;
 
 let local = mesh.local_agent().await;
 let peers = mesh.agents_by_project("alpha").await;
+let main_branch = mesh.who_is_on_branch("main").await;
 let maybe_peer = mesh.get_agent("agent-02").await;
 
 println!("local agent: {}", local.agent_id());
+println!("local branch: {}", local.branch());
 println!("known peers: {}", peers.len());
+println!("agents on main: {}", main_branch.len());
 println!("agent-02 visible: {}", maybe_peer.is_some());
 
 mesh.shutdown().await?;
@@ -113,6 +125,7 @@ let mesh = ZeroConfMesh::builder()
     .agent_id("agent-01")
     .role("coder")
     .project("alpha")
+    .branch("main")
     .port(8080)
     .build()
     .await?;
@@ -151,6 +164,7 @@ Available builder setters:
 - `agent_id(...)`
 - `role(...)`
 - `project(...)`
+- `branch(...)`
 - `port(...)`
 - `mdns_port(...)`
 - `service_type(...)`
@@ -164,6 +178,7 @@ Important defaults:
 - random UUID agent id if omitted,
 - role = `agent`,
 - project = `default`,
+- branch = `unknown`,
 - service type = `_agent-mesh._tcp.local.`,
 - mDNS port = `5353`,
 - heartbeat = `30s`,

@@ -10,6 +10,11 @@ The crate currently provides:
 - a concurrent in-memory registry with TTL-based stale-node eviction,
 - lifecycle events for join, update, and leave transitions.
 
+At the MVP level, every node should advertise enough data for peers to identify:
+- who the node is (`agent_id`),
+- which project it is currently attached to (`current_project`),
+- which branch or workstream it is currently attached to (`current_branch`).
+
 ## 2. Goals and Non-Goals
 
 ### Goals
@@ -87,7 +92,10 @@ The canonical TXT keys are:
 - `agent_id`
 - `role`
 - `current_project`
+- `current_branch`
 - `status`
+
+The Vietnamese MVP spec requires `agent_id`, `current_project`, and `current_branch` as first-class discovery fields. The current implementation also keeps `role` and `status` so the mesh can answer “who is doing what?” rather than only “who exists?”.
 
 Additional metadata is allowed as arbitrary string key/value pairs.
 
@@ -123,6 +131,7 @@ Important fields:
 - `agent_id: String`
 - `role: String`
 - `project: String`
+- `branch: String`
 - `status: AgentStatus`
 - `port: u16`
 - `addresses: Vec<IpAddr>`
@@ -137,6 +146,7 @@ pub struct AgentInfo {
     id: String,
     role: String,
     project: String,
+    branch: String,
     status: AgentStatus,
     port: u16,
     addresses: Vec<IpAddr>,
@@ -158,6 +168,7 @@ let mesh = ZeroConfMesh::builder()
     .agent_id("agent-01")
     .role("reviewer")
     .project("alpha")
+    .branch("main")
     .port(8080)
     .build()
     .await?;
@@ -177,6 +188,7 @@ Current builder setters:
 - `agent_id(...)`
 - `role(...)`
 - `project(...)`
+- `branch(...)`
 - `port(...)`
 - `mdns_port(...)`
 - `service_type(...)`
@@ -191,6 +203,7 @@ Defaults:
 - random UUID `agent_id` if omitted,
 - role = `agent`,
 - project = `default`,
+- branch = `unknown`,
 - service type = `_agent-mesh._tcp.local.`,
 - mDNS port = `5353`,
 - heartbeat = `30s`,
@@ -208,6 +221,10 @@ Defaults:
 - `get_agent(...).await`
 - `agents().await`
 - `agents_by_project(...).await`
+- `agents_by_branch(...).await`
+- `agents_by_project_and_branch(...).await`
+- `agents_by_status(...).await`
+- `who_is_on_branch(...).await`
 - `subscribe()`
 - `update_status(...).await`
 - `shutdown().await`
@@ -314,7 +331,8 @@ Cover:
 - registry insert/update/refresh behavior,
 - registry removal by instance name,
 - TTL eviction behavior,
-- event origin/reason semantics.
+- event origin/reason semantics,
+- local-vs-remote registry update semantics.
 
 ### 9.2 Runtime Tests
 Use a custom mDNS UDP port to avoid depending on the host's system Bonjour/Avahi setup.
@@ -326,6 +344,34 @@ Scenarios:
 
 ### 9.3 Failure Simulation
 Crash-like behavior is simulated by inserting peers with stale `last_seen` timestamps and running eviction logic directly. This avoids flaky host-network assumptions while still validating stale-node cleanup behavior.
+
+### 9.4 Documentation and Example Tests
+The crate should treat docs as part of the test surface:
+- rustdoc examples on the crate root and primary public types should compile,
+- examples in `examples/` should stay buildable under `cargo test`,
+- README snippets should match the current public API.
+
+In practice, the project should keep passing:
+- `cargo test`
+- `cargo test --doc`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+
+### 9.5 Tests That Should Be Added Next
+The current suite is good for the present slice, but the next implementation steps should add:
+- listener tests for malformed remote TXT payloads being ignored,
+- broadcaster tests for repeated re-registration after local status changes,
+- shutdown tests asserting graceful leave events are emitted in the expected order,
+- multi-peer runtime tests with more than two agents on the same custom mDNS port,
+- tests for project isolation where multiple projects coexist on one LAN but are filtered correctly by callers,
+- tests for custom metadata propagation across discovery.
+
+### 9.6 Test Design Rules
+To keep the suite reliable:
+- prefer deterministic unit tests over host-network-dependent integration tests,
+- use custom mDNS ports for runtime tests to reduce interference from system Bonjour/Avahi services,
+- avoid assertions that depend on exact packet timing,
+- validate observable outcomes (`registry`, events, status transitions) rather than daemon internals,
+- keep tests small and composable so failures point to a single behavior.
 
 ## 10. Future Work
 - configurable event channel capacity,
