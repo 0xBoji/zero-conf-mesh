@@ -188,6 +188,48 @@ impl AgentAnnouncement {
         );
     }
 
+    /// Updates the current project namespace and synchronizes the canonical TXT key.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the provided project is empty after trimming.
+    pub fn set_project(&mut self, project: impl Into<String>) -> Result<(), ZeroConfError> {
+        let project = normalize_required(project.into(), "project")?;
+        self.metadata
+            .insert(AGENT_PROJECT_METADATA_KEY.to_owned(), project.clone());
+        self.project = project;
+        Ok(())
+    }
+
+    /// Updates the current branch/workstream and synchronizes the canonical TXT key.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the provided branch is empty after trimming.
+    pub fn set_branch(&mut self, branch: impl Into<String>) -> Result<(), ZeroConfError> {
+        let branch = normalize_required(branch.into(), "branch")?;
+        self.metadata
+            .insert(AGENT_BRANCH_METADATA_KEY.to_owned(), branch.clone());
+        self.branch = branch;
+        Ok(())
+    }
+
+    /// Updates a non-canonical metadata entry.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the key is empty or reserved by the crate.
+    pub fn set_metadata(
+        &mut self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<(), ZeroConfError> {
+        let key = normalize_metadata_key(key.into())?;
+        if is_canonical_metadata_key(&key) {
+            return Err(ZeroConfError::ReservedMetadataKey { key });
+        }
+
+        self.metadata.insert(key, value.into());
+        Ok(())
+    }
+
     /// Converts this announcement into `mdns-sd` TXT properties.
     #[must_use]
     pub fn to_txt_properties(&self) -> Vec<TxtProperty> {
@@ -394,6 +436,26 @@ fn normalize_required(value: String, field: &'static str) -> Result<String, Zero
     Ok(trimmed.to_owned())
 }
 
+fn normalize_metadata_key(key: String) -> Result<String, ZeroConfError> {
+    let trimmed = key.trim();
+    if trimmed.is_empty() {
+        return Err(ZeroConfError::EmptyMetadataKey);
+    }
+
+    Ok(trimmed.to_owned())
+}
+
+fn is_canonical_metadata_key(key: &str) -> bool {
+    matches!(
+        key,
+        AGENT_ID_METADATA_KEY
+            | AGENT_ROLE_METADATA_KEY
+            | AGENT_PROJECT_METADATA_KEY
+            | AGENT_BRANCH_METADATA_KEY
+            | AGENT_STATUS_METADATA_KEY
+    )
+}
+
 fn metadata_from_txt_properties(
     properties: &TxtProperties,
 ) -> Result<AgentMetadata, ZeroConfError> {
@@ -579,5 +641,46 @@ mod tests {
             ZeroConfError::InvalidTxtPropertyEncoding { key }
             if key == "capability"
         ));
+    }
+
+    #[test]
+    fn agent_announcement_should_update_project_branch_and_metadata() {
+        let mut announcement = announcement();
+
+        announcement
+            .set_project("beta")
+            .expect("project update should succeed");
+        announcement
+            .set_branch("feature/runtime")
+            .expect("branch update should succeed");
+        announcement
+            .set_metadata("capability", "planning")
+            .expect("metadata update should succeed");
+
+        assert_eq!(announcement.project(), "beta");
+        assert_eq!(announcement.branch(), "feature/runtime");
+        assert_eq!(
+            announcement.metadata().get(AGENT_PROJECT_METADATA_KEY),
+            Some(&"beta".to_owned())
+        );
+        assert_eq!(
+            announcement.metadata().get(AGENT_BRANCH_METADATA_KEY),
+            Some(&"feature/runtime".to_owned())
+        );
+        assert_eq!(
+            announcement.metadata().get("capability"),
+            Some(&"planning".to_owned())
+        );
+    }
+
+    #[test]
+    fn agent_announcement_should_reject_reserved_metadata_keys() {
+        let mut announcement = announcement();
+
+        let err = announcement
+            .set_metadata(AGENT_STATUS_METADATA_KEY, "busy")
+            .expect_err("canonical metadata keys should be rejected");
+
+        assert!(matches!(err, ZeroConfError::ReservedMetadataKey { key } if key == "status"));
     }
 }

@@ -36,6 +36,12 @@ pub enum ZeroConfError {
     /// Metadata contained an empty key.
     #[error("metadata keys must not be empty")]
     EmptyMetadataKey,
+    /// Metadata attempted to overwrite a canonical key managed by the crate.
+    #[error("metadata key `{key}` is reserved; use the dedicated runtime updater instead")]
+    ReservedMetadataKey {
+        /// The reserved metadata key.
+        key: String,
+    },
     /// A required TXT property was missing from a discovered service.
     #[error("missing required TXT property `{key}`")]
     MissingTxtProperty {

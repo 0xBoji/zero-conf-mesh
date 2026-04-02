@@ -77,6 +77,9 @@ let mesh = ZeroConfMesh::builder()
     .await?;
 
 mesh.update_status(AgentStatus::Busy).await?;
+mesh.update_project("beta").await?;
+mesh.update_branch("feature/runtime").await?;
+mesh.update_metadata("capability", "planning").await?;
 
 let local = mesh.local_agent().await;
 let peers = mesh.agents_by_project("alpha").await;
@@ -212,8 +215,20 @@ Current automated coverage includes:
 - event origin/reason semantics,
 - two-node discovery on a custom mDNS port,
 - remote status propagation after local updates,
+- remote project/branch/metadata propagation after local updates,
 - multi-peer discovery on one custom mDNS port,
 - project isolation across shared-LAN discovery.
+
+## Runtime Updates
+
+After startup, the local node can refresh selected advertised fields without rebuilding the mesh:
+
+- `update_status(...)`
+- `update_project(...)`
+- `update_branch(...)`
+- `update_metadata(...)`
+
+`update_metadata(...)` is for non-canonical extension keys such as `capability` or `team`. Canonical fields like `status`, `current_project`, and `current_branch` should be changed through their dedicated update methods.
 
 Run checks locally:
 

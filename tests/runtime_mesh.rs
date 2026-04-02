@@ -30,6 +30,38 @@ async fn mesh_should_propagate_status_updates_to_remote_peers() -> Result<(), Bo
 }
 
 #[tokio::test]
+async fn mesh_should_propagate_project_branch_and_metadata_updates() -> Result<(), Box<dyn Error>> {
+    let mdns_port = available_udp_port();
+    let mesh_a = mesh("agent-a", "alpha", "main", 8081, mdns_port).await?;
+    let mesh_b = mesh("agent-b", "alpha", "main", 8082, mdns_port).await?;
+
+    wait_for_agent(&mesh_b, "agent-a").await?;
+
+    mesh_a.update_project("beta").await?;
+    mesh_a.update_branch("feature/runtime").await?;
+    mesh_a.update_metadata("capability", "planning").await?;
+
+    let peer = wait_for_agent_matching(&mesh_b, "agent-a", |agent| {
+        agent.project() == "beta"
+            && agent.branch() == "feature/runtime"
+            && agent.metadata().get("capability") == Some(&"planning".to_owned())
+    })
+    .await?;
+
+    assert_eq!(peer.project(), "beta");
+    assert_eq!(peer.branch(), "feature/runtime");
+    assert_eq!(
+        peer.metadata().get("capability"),
+        Some(&"planning".to_owned())
+    );
+
+    mesh_a.shutdown().await?;
+    mesh_b.shutdown().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn mesh_should_discover_multiple_peers_on_same_mdns_port() -> Result<(), Box<dyn Error>> {
     let mdns_port = available_udp_port();
     let mesh_a = mesh("agent-a", "alpha", "main", 8081, mdns_port).await?;

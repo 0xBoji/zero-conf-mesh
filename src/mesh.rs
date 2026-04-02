@@ -244,12 +244,45 @@ impl ZeroConfMesh {
     /// # Errors
     /// Returns [`ZeroConfError`] when the local announcement becomes invalid.
     pub async fn update_status(&self, status: AgentStatus) -> Result<(), ZeroConfError> {
-        {
-            let mut local_agent = self.local_agent.write().await;
+        self.mutate_local_agent(|local_agent| {
             local_agent.set_status(status);
-        }
+            Ok(())
+        })
+        .await
+    }
 
-        self.refresh_local_agent().await
+    /// Updates the local project namespace and refreshes the announcement immediately.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the provided project is empty after trimming.
+    pub async fn update_project(&self, project: impl Into<String>) -> Result<(), ZeroConfError> {
+        self.mutate_local_agent(|local_agent| local_agent.set_project(project))
+            .await
+    }
+
+    /// Updates the local branch/workstream and refreshes the announcement immediately.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the provided branch is empty after trimming.
+    pub async fn update_branch(&self, branch: impl Into<String>) -> Result<(), ZeroConfError> {
+        self.mutate_local_agent(|local_agent| local_agent.set_branch(branch))
+            .await
+    }
+
+    /// Updates a non-canonical metadata entry and refreshes the announcement immediately.
+    ///
+    /// Canonical keys such as `status`, `current_project`, and `current_branch` are
+    /// managed by dedicated runtime updaters and will be rejected here.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the key is empty or reserved by the crate.
+    pub async fn update_metadata(
+        &self,
+        key: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<(), ZeroConfError> {
+        self.mutate_local_agent(|local_agent| local_agent.set_metadata(key, value))
+            .await
     }
 
     /// Gracefully stops background tasks and removes the local agent from the registry.
@@ -297,6 +330,18 @@ impl ZeroConfMesh {
         self.broadcaster.announce(&announcement)?;
         self.registry.upsert_local(announcement).await;
         Ok(())
+    }
+
+    async fn mutate_local_agent<F>(&self, mutator: F) -> Result<(), ZeroConfError>
+    where
+        F: FnOnce(&mut AgentAnnouncement) -> Result<(), ZeroConfError>,
+    {
+        {
+            let mut local_agent = self.local_agent.write().await;
+            mutator(&mut local_agent)?;
+        }
+
+        self.refresh_local_agent().await
     }
 }
 
@@ -420,6 +465,73 @@ mod tests {
             .expect("local agent should stay registered");
 
         assert_eq!(agent.status(), AgentStatus::Busy);
+        mesh.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn mesh_should_update_local_project_branch_and_metadata() {
+        let mesh = ZeroConfMesh::builder()
+            .agent_id("agent-1")
+            .role("coder")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .mdns_port(available_udp_port())
+            .build()
+            .await
+            .expect("mesh should build");
+
+        mesh.update_project("beta")
+            .await
+            .expect("project update should succeed");
+        mesh.update_branch("feature/runtime")
+            .await
+            .expect("branch update should succeed");
+        mesh.update_metadata("capability", "planning")
+            .await
+            .expect("metadata update should succeed");
+
+        let local = mesh.local_agent().await;
+        let beta_agents = mesh.agents_by_project("beta").await;
+        let alpha_agents = mesh.agents_by_project("alpha").await;
+        let branch_agents = mesh.agents_by_branch("feature/runtime").await;
+
+        assert_eq!(local.project(), "beta");
+        assert_eq!(local.branch(), "feature/runtime");
+        assert_eq!(
+            local.metadata().get("capability"),
+            Some(&"planning".to_owned())
+        );
+        assert_eq!(beta_agents.len(), 1);
+        assert_eq!(alpha_agents.len(), 0);
+        assert_eq!(branch_agents.len(), 1);
+
+        mesh.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn mesh_should_reject_reserved_metadata_updates() {
+        let mesh = ZeroConfMesh::builder()
+            .agent_id("agent-1")
+            .role("coder")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .mdns_port(available_udp_port())
+            .build()
+            .await
+            .expect("mesh should build");
+
+        let err = mesh
+            .update_metadata(crate::AGENT_STATUS_METADATA_KEY, "busy")
+            .await
+            .expect_err("reserved metadata keys should be rejected");
+
+        assert!(matches!(
+            err,
+            ZeroConfError::ReservedMetadataKey { key } if key == "status"
+        ));
+
         mesh.shutdown().await.expect("shutdown should succeed");
     }
 

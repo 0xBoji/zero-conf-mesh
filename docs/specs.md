@@ -174,6 +174,9 @@ let mesh = ZeroConfMesh::builder()
     .await?;
 
 mesh.update_status(AgentStatus::Busy).await?;
+mesh.update_project("beta").await?;
+mesh.update_branch("feature/runtime").await?;
+mesh.update_metadata("capability", "planning").await?;
 
 let local = mesh.local_agent().await;
 let all_agents = mesh.agents().await;
@@ -227,9 +230,14 @@ Defaults:
 - `who_is_on_branch(...).await`
 - `subscribe()`
 - `update_status(...).await`
+- `update_project(...).await`
+- `update_branch(...).await`
+- `update_metadata(...).await`
 - `shutdown().await`
 
 `registry()` is still available for advanced read access, but typical consumers should prefer the high-level query methods on `ZeroConfMesh`.
+
+`update_metadata(...)` is intended for non-canonical extension keys only. Canonical keys such as `agent_id`, `current_project`, `current_branch`, `role`, and `status` remain managed by the crate so callers do not accidentally create divergent runtime state.
 
 ### 5.4 Lifecycle Events
 ```rust
@@ -264,6 +272,7 @@ Semantics:
 - invalid mDNS daemon port,
 - invalid heartbeat/TTL relationship,
 - empty metadata keys,
+- reserved canonical metadata keys used with generic metadata updaters,
 - missing required TXT properties,
 - invalid TXT property encoding,
 - invalid status strings,
@@ -340,8 +349,10 @@ Use a custom mDNS UDP port to avoid depending on the host's system Bonjour/Avahi
 Scenarios:
 - local mesh creation and shutdown,
 - local status update propagation,
+- local project/branch/metadata update propagation,
 - discovery between two mesh nodes on the same custom mDNS port,
 - remote peer status update propagation after a local status change,
+- remote peer project/branch/metadata update propagation after a local runtime change,
 - multi-peer discovery on the same custom mDNS port,
 - project isolation via query helpers on a shared LAN.
 
