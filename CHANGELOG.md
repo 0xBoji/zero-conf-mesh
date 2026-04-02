@@ -7,6 +7,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.2...v0.1.3) - 2026-04-02
+
+### Added
+
+- expand mes agent workflow commands
+- add file-based state export to mes
+- add mes cli for shell-driven discovery
+- support shared secret rotation
+- add authenticated LAN discovery controls
+
 ### Added
 - Advanced metadata queries for key-prefix, value-prefix, regex, and custom-predicate filtering.
 - Typed `capabilities` support in announcements, runtime updates, and peer queries.
