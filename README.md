@@ -4,6 +4,7 @@ Zero-configuration LAN service discovery for multi-agent systems in Rust using m
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](#installation)
+[![CI](https://github.com/0xBoji/zero-conf-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/0xBoji/zero-conf-mesh/actions/workflows/ci.yml)
 
 ## Status
 
@@ -217,8 +218,11 @@ Current automated coverage includes:
 Run checks locally:
 
 ```bash
+cargo fmt --check
 cargo test
+cargo test --doc
 cargo clippy --all-targets --all-features -- -D warnings
+cargo package --locked
 ```
 
 ## Publish Readiness
