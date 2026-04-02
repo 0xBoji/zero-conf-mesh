@@ -19,7 +19,7 @@ use crate::{
     events::AgentEvent,
     listener::Listener,
     registry::Registry,
-    types::{AgentAnnouncement, AgentStatus},
+    types::{AgentAnnouncement, AgentInfo, AgentStatus},
 };
 
 /// High-level runtime handle for the local mesh node.
@@ -90,11 +90,26 @@ impl ZeroConfMesh {
         let daemon = ServiceDaemon::new_with_port(config.mdns_port())?;
         let broadcaster =
             Broadcaster::new(daemon.clone(), config.service_type(), config.host_name());
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
         broadcaster.announce(&local_announcement)?;
+        let listener = Listener::new(
+            daemon.clone(),
+            config.service_type(),
+            config.agent_id(),
+            config.instance_name(),
+        );
+        let listener_task = match listener.spawn(registry.clone(), shutdown_rx.clone()) {
+            Ok(task) => task,
+            Err(error) => {
+                let _ = broadcaster.unregister(&local_announcement).await;
+                let _ = daemon.shutdown();
+                return Err(error);
+            }
+        };
+
         registry.upsert_local(local_announcement).await;
 
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let heartbeat_task = spawn_heartbeat_task(
             registry.clone(),
             local_agent.clone(),
@@ -102,18 +117,8 @@ impl ZeroConfMesh {
             config.heartbeat_interval(),
             shutdown_rx.clone(),
         );
-        let sweeper_task = spawn_sweeper_task(
-            registry.clone(),
-            config.heartbeat_interval(),
-            shutdown_rx.clone(),
-        );
-        let listener_task = Listener::new(
-            daemon.clone(),
-            config.service_type(),
-            config.agent_id(),
-            config.instance_name(),
-        )
-        .spawn(registry.clone(), shutdown_rx)?;
+        let sweeper_task =
+            spawn_sweeper_task(registry.clone(), config.heartbeat_interval(), shutdown_rx);
 
         Ok(Self {
             config,
@@ -156,22 +161,22 @@ impl ZeroConfMesh {
     }
 
     /// Returns a single agent by identifier from the registry.
-    pub async fn get_agent(&self, agent_id: &str) -> Option<crate::types::AgentInfo> {
+    pub async fn get_agent(&self, agent_id: &str) -> Option<AgentInfo> {
         self.registry.get(agent_id).await
     }
 
     /// Returns all known agents from the registry.
-    pub async fn agents(&self) -> Vec<crate::types::AgentInfo> {
+    pub async fn agents(&self) -> Vec<AgentInfo> {
         self.registry.list().await
     }
 
     /// Returns all known agents for a specific project namespace.
-    pub async fn agents_by_project(&self, project: &str) -> Vec<crate::types::AgentInfo> {
+    pub async fn agents_by_project(&self, project: &str) -> Vec<AgentInfo> {
         self.registry.get_all_by_project(project).await
     }
 
     /// Returns all known agents for a specific branch or workstream.
-    pub async fn agents_by_branch(&self, branch: &str) -> Vec<crate::types::AgentInfo> {
+    pub async fn agents_by_branch(&self, branch: &str) -> Vec<AgentInfo> {
         self.registry.get_all_by_branch(branch).await
     }
 
@@ -180,22 +185,19 @@ impl ZeroConfMesh {
         &self,
         project: &str,
         branch: &str,
-    ) -> Vec<crate::types::AgentInfo> {
+    ) -> Vec<AgentInfo> {
         self.registry
             .get_all_by_project_and_branch(project, branch)
             .await
     }
 
     /// Returns all known agents matching a specific status.
-    pub async fn agents_by_status(
-        &self,
-        status: crate::types::AgentStatus,
-    ) -> Vec<crate::types::AgentInfo> {
+    pub async fn agents_by_status(&self, status: AgentStatus) -> Vec<AgentInfo> {
         self.registry.get_all_by_status(status).await
     }
 
     /// Convenience alias for branch-focused queries.
-    pub async fn who_is_on_branch(&self, branch: &str) -> Vec<crate::types::AgentInfo> {
+    pub async fn who_is_on_branch(&self, branch: &str) -> Vec<AgentInfo> {
         self.agents_by_branch(branch).await
     }
 
@@ -222,8 +224,8 @@ impl ZeroConfMesh {
     ///         match event {
     ///             AgentEvent::Joined { .. }
     ///             | AgentEvent::Updated { .. }
-    ///             | AgentEvent::Left { .. } => {}
-    ///             _ => {}
+    ///             | AgentEvent::Left { .. }
+    ///             | _ => {}
     ///         }
     ///     }
     /// });
@@ -347,7 +349,7 @@ fn spawn_heartbeat_task(
                     if let Err(error) = broadcaster.announce(&announcement) {
                         warn!(?error, "failed to re-announce local service");
                     }
-                    let _ = registry.upsert(announcement).await;
+                    let _ = registry.upsert_local(announcement).await;
                 }
             }
         }
@@ -459,6 +461,7 @@ mod tests {
             .agent_id("agent-1")
             .role("coder")
             .project("alpha")
+            .branch("main")
             .port(8080)
             .mdns_port(available_udp_port())
             .build()
@@ -632,10 +635,7 @@ mod tests {
             .port()
     }
 
-    async fn wait_for_agent(
-        mesh: &ZeroConfMesh,
-        agent_id: &str,
-    ) -> Option<crate::types::AgentInfo> {
+    async fn wait_for_agent(mesh: &ZeroConfMesh, agent_id: &str) -> Option<AgentInfo> {
         let deadline = time::Instant::now() + Duration::from_secs(5);
         while time::Instant::now() < deadline {
             if let Some(agent) = mesh.get_agent(agent_id).await {

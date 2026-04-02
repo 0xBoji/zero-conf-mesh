@@ -209,7 +209,10 @@ Current automated coverage includes:
 - removal by instance name,
 - TTL eviction,
 - event origin/reason semantics,
-- two-node discovery on a custom mDNS port.
+- two-node discovery on a custom mDNS port,
+- remote status propagation after local updates,
+- multi-peer discovery on one custom mDNS port,
+- project isolation across shared-LAN discovery.
 
 Run checks locally:
 
@@ -228,7 +231,6 @@ Current crate state is suitable for continued public packaging work:
 - spec and README are aligned with the current implementation.
 
 Before publishing to crates.io, you would still typically want to:
-- replace the placeholder repository URL in `Cargo.toml`,
 - add crate-level API examples in rustdoc,
 - optionally add CI metadata/badges once the repo is public.
 
