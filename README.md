@@ -483,12 +483,16 @@ Common runtime methods:
 - `agents_by_branch(...).await`
 - `agents_by_project_and_branch(...).await`
 - `agents_by_status(...).await`
+- `agents_by_role(...).await`
+- `agents_with_metadata_key(...).await`
+- `agents_with_metadata(...).await`
 - `who_is_on_branch(...).await`
 - `subscribe()`
 - `update_status(...).await`
 - `update_project(...).await`
 - `update_branch(...).await`
 - `update_metadata(...).await`
+- `remove_metadata(...).await`
 - `shutdown().await`
 
 In most applications, you can ignore the lower-level internals and just work through `ZeroConfMesh`.
@@ -509,6 +513,7 @@ Available builder setters:
 - `status(...)`
 - `heartbeat_interval(...)`
 - `ttl(...)`
+- `event_capacity(...)`
 - `metadata(key, value)`
 - `metadata_map(...)`
 
@@ -522,6 +527,7 @@ Defaults:
 - mDNS port = `5353`
 - heartbeat = `30s`
 - TTL = `120s`
+- event capacity = `256`
 - initial status = `Idle`
 
 ### Notes on defaults
@@ -544,6 +550,7 @@ After startup, the local node can refresh selected advertised fields without reb
 - `update_project(...)`
 - `update_branch(...)`
 - `update_metadata(...)`
+- `remove_metadata(...)`
 
 `update_metadata(...)` is for **non-canonical extension keys** such as:
 
@@ -560,6 +567,12 @@ Canonical fields like:
 - `status`
 
 are intentionally managed through dedicated fields and updater methods so callers do not accidentally create divergent runtime state.
+
+Query helpers also include:
+
+- `agents_by_role(...)`
+- `agents_with_metadata_key(...)`
+- `agents_with_metadata(...)`
 
 ---
 
@@ -702,6 +715,7 @@ Current automated coverage includes:
 - two-node discovery on a custom mDNS port,
 - remote status propagation after local updates,
 - remote project/branch/metadata propagation after local updates,
+- remote metadata removal propagation after local updates,
 - multi-peer discovery on one custom mDNS port,
 - project isolation across shared-LAN discovery,
 - malformed remote TXT payloads being ignored,

@@ -17,6 +17,8 @@ pub const DEFAULT_MDNS_PORT: u16 = mdns_sd::MDNS_PORT;
 pub const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 /// Default TTL used for stale-peer eviction.
 pub const DEFAULT_TTL: Duration = Duration::from_secs(120);
+/// Default broadcast channel capacity for lifecycle events.
+pub const DEFAULT_EVENT_CAPACITY: usize = 256;
 
 /// Immutable runtime configuration for a mesh node.
 ///
@@ -34,6 +36,7 @@ pub struct ZeroConfConfig {
     initial_status: AgentStatus,
     heartbeat_interval: Duration,
     ttl: Duration,
+    event_capacity: usize,
     metadata: AgentMetadata,
 }
 
@@ -57,6 +60,7 @@ impl ZeroConfConfig {
         initial_status: AgentStatus,
         heartbeat_interval: Duration,
         ttl: Duration,
+        event_capacity: usize,
         metadata: AgentMetadata,
     ) -> Result<Self, ZeroConfError> {
         let config = Self {
@@ -70,6 +74,7 @@ impl ZeroConfConfig {
             initial_status,
             heartbeat_interval,
             ttl,
+            event_capacity,
             metadata,
         };
 
@@ -95,6 +100,10 @@ impl ZeroConfConfig {
                 heartbeat_interval: self.heartbeat_interval,
                 ttl: self.ttl,
             });
+        }
+
+        if self.event_capacity == 0 {
+            return Err(ZeroConfError::InvalidEventCapacity);
         }
 
         if !is_valid_service_type(&self.service_type) {
@@ -168,6 +177,12 @@ impl ZeroConfConfig {
     #[must_use]
     pub const fn ttl(&self) -> Duration {
         self.ttl
+    }
+
+    /// Returns the lifecycle event broadcast channel capacity.
+    #[must_use]
+    pub const fn event_capacity(&self) -> usize {
+        self.event_capacity
     }
 
     /// Returns any extra metadata configured for the local node.
@@ -246,6 +261,7 @@ mod tests {
             AgentStatus::Idle,
             DEFAULT_HEARTBEAT_INTERVAL,
             DEFAULT_TTL,
+            DEFAULT_EVENT_CAPACITY,
             AgentMetadata::new(),
         )
         .expect_err("port zero must be rejected");
@@ -266,6 +282,7 @@ mod tests {
             AgentStatus::Idle,
             Duration::from_secs(30),
             Duration::from_secs(30),
+            DEFAULT_EVENT_CAPACITY,
             AgentMetadata::new(),
         )
         .expect_err("ttl must be greater than heartbeat");
@@ -289,10 +306,32 @@ mod tests {
             AgentStatus::Idle,
             DEFAULT_HEARTBEAT_INTERVAL,
             DEFAULT_TTL,
+            DEFAULT_EVENT_CAPACITY,
             AgentMetadata::new(),
         )
         .expect_err("mDNS port zero must be rejected");
 
         assert_eq!(err.to_string(), "mDNS port must be greater than zero");
+    }
+
+    #[test]
+    fn config_should_reject_zero_event_capacity() {
+        let err = ZeroConfConfig::new(
+            "agent-1",
+            "coder",
+            "proj",
+            "main",
+            8080,
+            DEFAULT_MDNS_PORT,
+            DEFAULT_SERVICE_TYPE,
+            AgentStatus::Idle,
+            DEFAULT_HEARTBEAT_INTERVAL,
+            DEFAULT_TTL,
+            0,
+            AgentMetadata::new(),
+        )
+        .expect_err("event capacity zero must be rejected");
+
+        assert_eq!(err.to_string(), "event capacity must be greater than zero");
     }
 }

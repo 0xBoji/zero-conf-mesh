@@ -3,11 +3,10 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::{RwLock, broadcast};
 
 use crate::{
+    config::DEFAULT_EVENT_CAPACITY,
     events::{AgentEvent, DepartureReason, EventOrigin},
     types::{AgentAnnouncement, AgentInfo},
 };
-
-const DEFAULT_EVENT_CAPACITY: usize = 256;
 
 /// Result of an upsert operation against the registry.
 #[derive(Debug, Clone)]
@@ -255,6 +254,47 @@ impl Registry {
         agents
     }
 
+    /// Returns all known agents matching a specific role.
+    pub async fn get_all_by_role(&self, role: &str) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| agent.role() == role)
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
+    /// Returns all known agents that contain the provided metadata key.
+    pub async fn get_all_with_metadata_key(&self, key: &str) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| agent.metadata().contains_key(key))
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
+    /// Returns all known agents whose metadata contains the provided key/value pair.
+    pub async fn get_all_by_metadata(&self, key: &str, value: &str) -> Vec<AgentInfo> {
+        let registry = self.inner.read().await;
+        let mut agents = registry
+            .values()
+            .filter(|agent| {
+                agent
+                    .metadata()
+                    .get(key)
+                    .is_some_and(|stored| stored == value)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        agents.sort_by(|left, right| left.id().cmp(right.id()));
+        agents
+    }
+
     /// Sweeps the registry and evicts stale peers.
     pub async fn evict_stale(&self) -> Vec<AgentInfo> {
         self.evict_stale_at(Instant::now()).await
@@ -354,6 +394,33 @@ mod tests {
         assert_eq!(alpha_main[0].id(), "agent-a");
         assert_eq!(busy.len(), 1);
         assert_eq!(busy[0].id(), "agent-b");
+    }
+
+    #[tokio::test]
+    async fn registry_should_filter_by_role_and_metadata() {
+        let registry = Registry::new(Duration::from_secs(120));
+
+        let mut reviewer = announcement("agent-a", "alpha", AgentStatus::Idle);
+        reviewer
+            .set_metadata("capability", "review")
+            .expect("metadata should update");
+
+        let mut worker = announcement("agent-b", "beta", AgentStatus::Busy);
+        worker
+            .set_metadata("capability", "planning")
+            .expect("metadata should update");
+
+        registry.upsert(reviewer).await;
+        registry.upsert(worker).await;
+
+        let coders = registry.get_all_by_role("coder").await;
+        let planning = registry.get_all_by_metadata("capability", "planning").await;
+        let capability_key = registry.get_all_with_metadata_key("capability").await;
+
+        assert_eq!(coders.len(), 2);
+        assert_eq!(planning.len(), 1);
+        assert_eq!(planning[0].id(), "agent-b");
+        assert_eq!(capability_key.len(), 2);
     }
 
     #[tokio::test]

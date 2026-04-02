@@ -177,6 +177,7 @@ mesh.update_status(AgentStatus::Busy).await?;
 mesh.update_project("beta").await?;
 mesh.update_branch("feature/runtime").await?;
 mesh.update_metadata("capability", "planning").await?;
+mesh.remove_metadata("capability").await?;
 
 let local = mesh.local_agent().await;
 let all_agents = mesh.agents().await;
@@ -198,6 +199,7 @@ Current builder setters:
 - `status(...)`
 - `heartbeat_interval(...)`
 - `ttl(...)`
+- `event_capacity(...)`
 - `metadata(key, value)`
 - `metadata_map(...)`
 - `build().await`
@@ -211,6 +213,7 @@ Defaults:
 - mDNS port = `5353`,
 - heartbeat = `30s`,
 - TTL = `120s`,
+- event capacity = `256`,
 - initial status = `Idle`.
 
 ### 5.3 High-Level Runtime API
@@ -227,12 +230,16 @@ Defaults:
 - `agents_by_branch(...).await`
 - `agents_by_project_and_branch(...).await`
 - `agents_by_status(...).await`
+- `agents_by_role(...).await`
+- `agents_with_metadata_key(...).await`
+- `agents_with_metadata(...).await`
 - `who_is_on_branch(...).await`
 - `subscribe()`
 - `update_status(...).await`
 - `update_project(...).await`
 - `update_branch(...).await`
 - `update_metadata(...).await`
+- `remove_metadata(...).await`
 - `shutdown().await`
 
 `registry()` is still available for advanced read access, but typical consumers should prefer the high-level query methods on `ZeroConfMesh`.
@@ -270,6 +277,7 @@ Semantics:
 - invalid service type,
 - invalid advertised port,
 - invalid mDNS daemon port,
+- invalid event channel capacity,
 - invalid heartbeat/TTL relationship,
 - empty metadata keys,
 - reserved canonical metadata keys used with generic metadata updaters,
@@ -350,9 +358,11 @@ Scenarios:
 - local mesh creation and shutdown,
 - local status update propagation,
 - local project/branch/metadata update propagation,
+- local metadata removal propagation,
 - discovery between two mesh nodes on the same custom mDNS port,
 - remote peer status update propagation after a local status change,
 - remote peer project/branch/metadata update propagation after a local runtime change,
+- remote peer metadata removal propagation after a local runtime change,
 - multi-peer discovery on the same custom mDNS port,
 - project isolation via query helpers on a shared LAN,
 - malformed remote TXT payloads being ignored by the listener.
@@ -386,9 +396,8 @@ To keep the suite reliable:
 - keep tests small and composable so failures point to a single behavior.
 
 ## 10. Future Work
-- configurable event channel capacity,
 - richer status vocabularies or user-defined states,
-- optional filtering helpers for roles/capabilities,
+- richer metadata query expressions (prefix/regex/custom predicates),
 - encrypted or signed metadata payloads,
 - leader election or higher-level coordination protocols,
 - more explicit network-interface controls if required by real deployments.

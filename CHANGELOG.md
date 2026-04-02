@@ -17,6 +17,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 - Detailed, onboarding-focused README with architecture, workflows, and failure-mode explanations.
+- Configurable lifecycle event channel capacity via builder/config.
+- Query helpers for filtering peers by role and metadata.
+- Runtime metadata removal API for non-canonical metadata keys.
 
 ## [0.1.0] - 2026-04-02
 

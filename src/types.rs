@@ -230,6 +230,20 @@ impl AgentAnnouncement {
         Ok(())
     }
 
+    /// Removes a non-canonical metadata entry.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the key is empty or reserved by the crate.
+    pub fn remove_metadata(&mut self, key: impl Into<String>) -> Result<(), ZeroConfError> {
+        let key = normalize_metadata_key(key.into())?;
+        if is_canonical_metadata_key(&key) {
+            return Err(ZeroConfError::ReservedMetadataKey { key });
+        }
+
+        self.metadata.remove(&key);
+        Ok(())
+    }
+
     /// Converts this announcement into `mdns-sd` TXT properties.
     #[must_use]
     pub fn to_txt_properties(&self) -> Vec<TxtProperty> {
@@ -682,5 +696,15 @@ mod tests {
             .expect_err("canonical metadata keys should be rejected");
 
         assert!(matches!(err, ZeroConfError::ReservedMetadataKey { key } if key == "status"));
+    }
+
+    #[test]
+    fn agent_announcement_should_remove_non_canonical_metadata() {
+        let mut announcement = announcement();
+        announcement
+            .remove_metadata("capability")
+            .expect("metadata removal should succeed");
+
+        assert_eq!(announcement.metadata().get("capability"), None);
     }
 }

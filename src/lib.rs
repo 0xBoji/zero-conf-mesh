@@ -48,8 +48,8 @@ mod types;
 
 pub use builder::ZeroConfMeshBuilder;
 pub use config::{
-    DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MDNS_PORT, DEFAULT_SERVICE_TYPE, DEFAULT_TTL,
-    ZeroConfConfig,
+    DEFAULT_EVENT_CAPACITY, DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MDNS_PORT, DEFAULT_SERVICE_TYPE,
+    DEFAULT_TTL, ZeroConfConfig,
 };
 pub use error::ZeroConfError;
 pub use events::{AgentEvent, DepartureReason, EventOrigin};

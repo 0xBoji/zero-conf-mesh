@@ -4,8 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     config::{
-        DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MDNS_PORT, DEFAULT_SERVICE_TYPE, DEFAULT_TTL,
-        ZeroConfConfig,
+        DEFAULT_EVENT_CAPACITY, DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_MDNS_PORT,
+        DEFAULT_SERVICE_TYPE, DEFAULT_TTL, ZeroConfConfig,
     },
     error::ZeroConfError,
     mesh::ZeroConfMesh,
@@ -45,6 +45,7 @@ pub struct ZeroConfMeshBuilder {
     initial_status: AgentStatus,
     heartbeat_interval: Duration,
     ttl: Duration,
+    event_capacity: usize,
     metadata: AgentMetadata,
 }
 
@@ -61,6 +62,7 @@ impl Default for ZeroConfMeshBuilder {
             initial_status: AgentStatus::Idle,
             heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL,
             ttl: DEFAULT_TTL,
+            event_capacity: DEFAULT_EVENT_CAPACITY,
             metadata: AgentMetadata::new(),
         }
     }
@@ -137,6 +139,13 @@ impl ZeroConfMeshBuilder {
         self
     }
 
+    /// Sets the lifecycle event broadcast channel capacity.
+    #[must_use]
+    pub const fn event_capacity(mut self, event_capacity: usize) -> Self {
+        self.event_capacity = event_capacity;
+        self
+    }
+
     /// Adds or replaces a metadata entry.
     #[must_use]
     pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -175,6 +184,7 @@ impl ZeroConfMeshBuilder {
             self.initial_status,
             self.heartbeat_interval,
             self.ttl,
+            self.event_capacity,
             self.metadata,
         )
     }
@@ -211,5 +221,20 @@ mod tests {
             .expect_err("missing port should be rejected");
 
         assert_eq!(err.to_string(), "port must be greater than zero");
+    }
+
+    #[tokio::test]
+    async fn builder_should_reject_zero_event_capacity() {
+        let err = ZeroConfMesh::builder()
+            .role("reviewer")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .event_capacity(0)
+            .build()
+            .await
+            .expect_err("zero event capacity should be rejected");
+
+        assert_eq!(err.to_string(), "event capacity must be greater than zero");
     }
 }

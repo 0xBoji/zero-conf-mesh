@@ -63,6 +63,54 @@ async fn mesh_should_propagate_project_branch_and_metadata_updates() -> Result<(
 }
 
 #[tokio::test]
+async fn mesh_should_propagate_metadata_removals_and_role_queries() -> Result<(), Box<dyn Error>> {
+    let mdns_port = available_udp_port();
+    let mesh_a = ZeroConfMesh::builder()
+        .agent_id("agent-a")
+        .role("planner")
+        .project("alpha")
+        .branch("main")
+        .port(8081)
+        .mdns_port(mdns_port)
+        .heartbeat_interval(Duration::from_millis(200))
+        .ttl(Duration::from_secs(2))
+        .metadata("capability", "planning")
+        .build()
+        .await?;
+    let mesh_b = mesh("agent-b", "alpha", "main", 8082, mdns_port).await?;
+
+    wait_for_agent(&mesh_b, "agent-a").await?;
+
+    assert_eq!(
+        ids(&mesh_b.agents_by_role("planner").await),
+        vec!["agent-a"]
+    );
+    assert_eq!(
+        ids(&mesh_b.agents_with_metadata("capability", "planning").await),
+        vec!["agent-a"]
+    );
+
+    mesh_a.remove_metadata("capability").await?;
+
+    wait_for_agent_matching(&mesh_b, "agent-a", |agent| {
+        agent.metadata().get("capability").is_none()
+    })
+    .await?;
+
+    assert!(
+        mesh_b
+            .agents_with_metadata("capability", "planning")
+            .await
+            .is_empty()
+    );
+
+    mesh_a.shutdown().await?;
+    mesh_b.shutdown().await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn mesh_should_discover_multiple_peers_on_same_mdns_port() -> Result<(), Box<dyn Error>> {
     let mdns_port = available_udp_port();
     let mesh_a = mesh("agent-a", "alpha", "main", 8081, mdns_port).await?;

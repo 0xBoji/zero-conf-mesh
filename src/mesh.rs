@@ -84,7 +84,7 @@ impl ZeroConfMesh {
     /// # Errors
     /// Returns [`ZeroConfError`] when the runtime cannot be initialized.
     pub async fn from_config(config: ZeroConfConfig) -> Result<Self, ZeroConfError> {
-        let registry = Registry::new(config.ttl());
+        let registry = Registry::with_event_capacity(config.ttl(), config.event_capacity());
         let local_announcement = config.local_announcement()?;
         let local_agent = std::sync::Arc::new(RwLock::new(local_announcement.clone()));
         let daemon = ServiceDaemon::new_with_port(config.mdns_port())?;
@@ -198,6 +198,21 @@ impl ZeroConfMesh {
         self.registry.get_all_by_status(status).await
     }
 
+    /// Returns all known agents matching a specific role.
+    pub async fn agents_by_role(&self, role: &str) -> Vec<AgentInfo> {
+        self.registry.get_all_by_role(role).await
+    }
+
+    /// Returns all known agents that contain the provided metadata key.
+    pub async fn agents_with_metadata_key(&self, key: &str) -> Vec<AgentInfo> {
+        self.registry.get_all_with_metadata_key(key).await
+    }
+
+    /// Returns all known agents whose metadata contains the provided key/value pair.
+    pub async fn agents_with_metadata(&self, key: &str, value: &str) -> Vec<AgentInfo> {
+        self.registry.get_all_by_metadata(key, value).await
+    }
+
     /// Convenience alias for branch-focused queries.
     pub async fn who_is_on_branch(&self, branch: &str) -> Vec<AgentInfo> {
         self.agents_by_branch(branch).await
@@ -284,6 +299,15 @@ impl ZeroConfMesh {
         value: impl Into<String>,
     ) -> Result<(), ZeroConfError> {
         self.mutate_local_agent(|local_agent| local_agent.set_metadata(key, value))
+            .await
+    }
+
+    /// Removes a non-canonical metadata entry and refreshes the announcement immediately.
+    ///
+    /// # Errors
+    /// Returns [`ZeroConfError`] when the key is empty or reserved by the crate.
+    pub async fn remove_metadata(&self, key: impl Into<String>) -> Result<(), ZeroConfError> {
+        self.mutate_local_agent(|local_agent| local_agent.remove_metadata(key))
             .await
     }
 
@@ -511,10 +535,11 @@ mod tests {
             AgentStatus::Idle,
             DEFAULT_HEARTBEAT_INTERVAL,
             DEFAULT_TTL,
+            crate::DEFAULT_EVENT_CAPACITY,
             crate::AgentMetadata::new(),
         )
         .expect("config should be valid");
-        let registry = Registry::new(config.ttl());
+        let registry = Registry::with_event_capacity(config.ttl(), config.event_capacity());
         let local_announcement = config
             .local_announcement()
             .expect("local announcement should build");
@@ -605,6 +630,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mesh_should_remove_runtime_metadata() {
+        let mesh = ZeroConfMesh::builder()
+            .agent_id("agent-1")
+            .role("coder")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .mdns_port(available_udp_port())
+            .metadata("capability", "planning")
+            .build()
+            .await
+            .expect("mesh should build");
+
+        mesh.remove_metadata("capability")
+            .await
+            .expect("metadata removal should succeed");
+
+        let local = mesh.local_agent().await;
+        let matches = mesh.agents_with_metadata_key("capability").await;
+
+        assert_eq!(local.metadata().get("capability"), None);
+        assert!(matches.is_empty());
+
+        mesh.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
     async fn mesh_should_reject_reserved_metadata_updates() {
         let mesh = ZeroConfMesh::builder()
             .agent_id("agent-1")
@@ -649,6 +701,7 @@ mod tests {
         let main = mesh.agents_by_branch("main").await;
         let alpha_main = mesh.agents_by_project_and_branch("alpha", "main").await;
         let idle = mesh.agents_by_status(AgentStatus::Idle).await;
+        let coders = mesh.agents_by_role("coder").await;
 
         assert_eq!(mesh.local_agent_id(), "agent-1");
         assert_eq!(local.agent_id(), "agent-1");
@@ -658,6 +711,7 @@ mod tests {
         assert_eq!(main.len(), 1);
         assert_eq!(alpha_main.len(), 1);
         assert_eq!(idle.len(), 1);
+        assert_eq!(coders.len(), 1);
 
         mesh.shutdown().await.expect("shutdown should succeed");
     }
