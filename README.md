@@ -209,6 +209,16 @@ The previously published crate name was `zero-conf-mesh`; the renamed
 `coding_agent_mesh_presence` package resumes with a fresh manual crates.io publish.
 After that publish lands, replace the path dependency with the crate version.
 
+Once `coding_agent_mesh_presence` `0.1.5` is live on crates.io, the bash-friendly install flow is:
+
+```bash
+cargo add coding_agent_mesh_presence
+cargo add tokio --features macros,rt-multi-thread
+cargo install coding_agent_mesh_presence
+```
+
+That installs the library dependency for Rust projects and the `camp` CLI binary for shell usage.
+
 ---
 
 ## The mental model
@@ -500,6 +510,12 @@ Those systems are excellent at:
 They are usually **not** interested in importing Rust crates directly.
 
 So `camp` gives you a text-first interface over the same discovery engine.
+
+If you want the CLI from crates.io after the renamed package is published:
+
+```bash
+cargo install coding_agent_mesh_presence
+```
 
 ### Main commands
 
