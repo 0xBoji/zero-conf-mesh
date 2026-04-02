@@ -91,6 +91,7 @@ The `mes` CLI builds on this mode for `list`, `get`, and `watch` commands, and c
 It also supports:
 - `who` as a human/agent-friendly alias for `list`,
 - append-only JSONL event export,
+- shell-command hooks fed by JSON over stdin,
 - shell completion generation.
 
 ## 4. Data Model

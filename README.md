@@ -606,6 +606,12 @@ And you can persist the event stream itself as JSONL:
 mes watch --write-events /tmp/agent_mesh_events.jsonl
 ```
 
+Or trigger a shell command on every snapshot/event:
+
+```bash
+mes watch --exec 'python3 /path/to/hook.py'
+```
+
 This is useful for tmux panes, local supervisors, and agent loops that want to react to:
 
 - joins,
@@ -620,6 +626,18 @@ cat /tmp/agent_mesh_state.json
 ```
 
 instead of keeping a long-running JSON event parser in memory.
+
+For `--exec`, each invocation receives:
+
+- one JSON document on `stdin`
+- `MES_KIND` in the environment (`snapshot`, `joined`, `updated`, `left`)
+- `MES_EVENT_JSON` in the environment with the same serialized payload
+
+That means a hook can be as simple as:
+
+```bash
+mes watch --exec 'jq -r .kind >> /tmp/mes-kinds.log'
+```
 
 ### `mes completions`
 

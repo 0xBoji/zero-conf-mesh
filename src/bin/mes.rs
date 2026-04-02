@@ -10,6 +10,7 @@ use std::{
     io::Write,
     net::{IpAddr, Ipv4Addr, UdpSocket},
     path::{Path, PathBuf},
+    process::{Command as ProcessCommand, Stdio},
     str::FromStr,
     time::Duration,
 };
@@ -195,6 +196,9 @@ struct WatchCommand {
     /// Append newline-delimited JSON events to a log file.
     #[arg(long)]
     write_events: Option<PathBuf>,
+    /// Execute a shell command for each snapshot/event and send JSON to stdin.
+    #[arg(long)]
+    exec: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -339,12 +343,16 @@ async fn run_watch(command: WatchCommand) -> Result<(), Box<dyn Error>> {
         kind: "snapshot",
         agents: mesh.agents().await.iter().map(to_agent_record).collect(),
     };
-    print_json_line(&snapshot)?;
+    let snapshot_json = json_line_string(&snapshot)?;
+    println!("{snapshot_json}");
     if let Some(path) = command.write_state.as_deref() {
         write_state_snapshot(path, &snapshot.agents)?;
     }
     if let Some(path) = command.write_events.as_deref() {
-        append_json_line(path, &snapshot)?;
+        append_json_line(path, &snapshot_json)?;
+    }
+    if let Some(exec) = command.exec.as_deref() {
+        run_exec_hook(exec, "snapshot", &snapshot_json)?;
     }
 
     let mut events = mesh.subscribe();
@@ -355,13 +363,18 @@ async fn run_watch(command: WatchCommand) -> Result<(), Box<dyn Error>> {
                 match event {
                     Ok(event) => {
                         if let Some(record) = to_event_record(&event) {
-                            print_json_line(&record)?;
+                            let kind = record.kind;
+                            let record_json = json_line_string(&record)?;
+                            println!("{record_json}");
                             if let Some(path) = command.write_state.as_deref() {
                                 let agents = mesh.agents().await.iter().map(to_agent_record).collect::<Vec<_>>();
                                 write_state_snapshot(path, &agents)?;
                             }
                             if let Some(path) = command.write_events.as_deref() {
-                                append_json_line(path, &record)?;
+                                append_json_line(path, &record_json)?;
+                            }
+                            if let Some(exec) = command.exec.as_deref() {
+                                run_exec_hook(exec, kind, &record_json)?;
                             }
                         }
                     }
@@ -643,9 +656,8 @@ fn print_json_pretty<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn print_json_line<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
-    println!("{}", serde_json::to_string(value)?);
-    Ok(())
+fn json_line_string<T: Serialize>(value: &T) -> Result<String, Box<dyn Error>> {
+    Ok(serde_json::to_string(value)?)
 }
 
 fn print_banner() {
@@ -678,7 +690,7 @@ fn write_state_snapshot(path: &Path, agents: &[AgentRecord]) -> Result<(), Box<d
     Ok(())
 }
 
-fn append_json_line<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn Error>> {
+fn append_json_line(path: &Path, line: &str) -> Result<(), Box<dyn Error>> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
@@ -690,9 +702,33 @@ fn append_json_line<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn 
         .create(true)
         .append(true)
         .open(path)?;
-    serde_json::to_writer(&mut file, value)?;
+    file.write_all(line.as_bytes())?;
     file.write_all(b"\n")?;
     Ok(())
+}
+
+fn run_exec_hook(command: &str, kind: &str, payload: &str) -> Result<(), Box<dyn Error>> {
+    let mut child = ProcessCommand::new("/bin/sh")
+        .arg("-lc")
+        .arg(command)
+        .env("MES_KIND", kind)
+        .env("MES_EVENT_JSON", payload)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(payload.as_bytes())?;
+        stdin.write_all(b"\n")?;
+    }
+
+    let status = child.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("mes exec hook failed with status {status}").into())
+    }
 }
 
 fn temporary_state_path(path: &Path) -> PathBuf {
@@ -763,12 +799,31 @@ mod tests {
             kind: "snapshot",
             agents: Vec::new(),
         };
+        let line = json_line_string(&payload).expect("json should serialize");
 
-        append_json_line(&path, &payload).expect("json line should be written");
+        append_json_line(&path, &line).expect("json line should be written");
 
         let contents = fs::read_to_string(&path).expect("json line file should exist");
         assert!(contents.ends_with('\n'));
         assert!(contents.contains("\"kind\":\"snapshot\""));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn run_exec_hook_should_pipe_json_to_stdin() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should move forward")
+            .as_nanos();
+        let path = env::temp_dir().join(format!("mes-hook-{unique}.json"));
+        let payload = r#"{"kind":"snapshot"}"#;
+        let command = format!("cat > {}", path.display());
+
+        run_exec_hook(&command, "snapshot", payload).expect("hook should succeed");
+
+        let contents = fs::read_to_string(&path).expect("hook output should exist");
+        assert_eq!(contents, format!("{payload}\n"));
 
         let _ = fs::remove_file(path);
     }
