@@ -200,6 +200,7 @@ pub struct ZeroConfConfig {
     event_capacity: usize,
     capabilities: Vec<String>,
     metadata: AgentMetadata,
+    advertise_local: bool,
     enabled_interfaces: Vec<NetworkInterface>,
     disabled_interfaces: Vec<NetworkInterface>,
     shared_secret_auth: Option<SharedSecretAuth>,
@@ -243,6 +244,7 @@ impl ZeroConfConfig {
             event_capacity,
             capabilities,
             metadata,
+            advertise_local: true,
             enabled_interfaces: Vec::new(),
             disabled_interfaces: Vec::new(),
             shared_secret_auth: None,
@@ -376,6 +378,12 @@ impl ZeroConfConfig {
         &self.metadata
     }
 
+    /// Returns whether this node should announce itself on the LAN.
+    #[must_use]
+    pub const fn advertise_local(&self) -> bool {
+        self.advertise_local
+    }
+
     /// Returns the shared-secret authentication settings, if enabled.
     #[must_use]
     pub fn shared_secret_auth(&self) -> Option<&SharedSecretAuth> {
@@ -398,6 +406,13 @@ impl ZeroConfConfig {
     #[must_use]
     pub fn with_enabled_interface(mut self, interface: impl Into<NetworkInterface>) -> Self {
         self.enabled_interfaces.push(interface.into());
+        self
+    }
+
+    /// Controls whether the local node should announce itself on the LAN.
+    #[must_use]
+    pub fn with_advertise_local(mut self, advertise_local: bool) -> Self {
+        self.advertise_local = advertise_local;
         self
     }
 

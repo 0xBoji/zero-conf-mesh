@@ -30,6 +30,7 @@ Zero-configuration LAN service discovery for multi-agent systems in Rust using m
   - [3. Subscribe to lifecycle events](#3-subscribe-to-lifecycle-events)
   - [4. Update runtime state without rebuilding](#4-update-runtime-state-without-rebuilding)
 - [Examples included in this repo](#examples-included-in-this-repo)
+- [CLI for agents: `mes`](#cli-for-agents-mes)
 - [Public API overview](#public-api-overview)
 - [Builder configuration reference](#builder-configuration-reference)
 - [Runtime update semantics](#runtime-update-semantics)
@@ -466,6 +467,178 @@ ZCM_MDNS_PORT=5454 cargo run --example two_nodes
 
 ---
 
+## CLI for agents: `mes`
+
+This repository now also ships a CLI binary named **`mes`**.
+
+It is designed specifically for shell-driven and LLM-driven workflows:
+
+- big ASCII banner on startup,
+- structured JSON on `stdout`,
+- visual banner on `stderr` so JSON consumers are not broken,
+- no Python/TypeScript bindings required.
+
+### Why `mes` exists
+
+In many agentic coding systems, the “worker” process is not a Rust program.
+It is often:
+
+- a Python loop,
+- a TypeScript orchestrator,
+- a shell script,
+- or an LLM running commands in a tmux pane.
+
+Those systems are excellent at:
+
+- running commands,
+- reading JSON,
+- parsing stdout,
+- tailing files.
+
+They are usually **not** interested in importing Rust crates directly.
+
+So `mes` gives you a text-first interface over the same discovery engine.
+
+### Main commands
+
+- `mes announce`
+- `mes list`
+- `mes get`
+- `mes watch`
+
+### `mes announce`
+
+Bring an agent online on the LAN and keep it announced until interrupted:
+
+```bash
+mes announce \
+  --id coder-01 \
+  --role rust-dev \
+  --project alpha \
+  --branch main \
+  --port 8080 \
+  --capability review \
+  --capability planning
+```
+
+You can also emit the startup snapshot as JSON:
+
+```bash
+mes announce \
+  --id coder-01 \
+  --role rust-dev \
+  --project alpha \
+  --branch main \
+  --port 8080 \
+  --json
+```
+
+### `mes list`
+
+Discover peers without advertising the CLI process itself and print JSON:
+
+```bash
+mes list --role reviewer
+mes list --project alpha --capability review
+mes list --metadata capability=planning
+mes list --metadata-regex capability='plan.*'
+```
+
+Example output:
+
+```json
+[
+  {
+    "id": "qa-01",
+    "instance_name": "qa-01._agent-mesh._tcp.local.",
+    "role": "reviewer",
+    "project": "alpha",
+    "branch": "main",
+    "status": "idle",
+    "capabilities": ["review"],
+    "port": 8080,
+    "addresses": ["192.168.1.5"],
+    "metadata": {
+      "agent_id": "qa-01",
+      "role": "reviewer",
+      "current_project": "alpha",
+      "current_branch": "main",
+      "status": "idle",
+      "capabilities": "review"
+    }
+  }
+]
+```
+
+### `mes get`
+
+Resolve a single agent by id:
+
+```bash
+mes get qa-01
+```
+
+### `mes watch`
+
+Watch the mesh as newline-delimited JSON:
+
+```bash
+mes watch
+```
+
+This is useful for tmux panes, local supervisors, and agent loops that want to react to:
+
+- joins,
+- updates,
+- departures,
+- rolling capability or status changes.
+
+### Shared-secret support in the CLI
+
+The CLI exposes the same auth controls as the library:
+
+- `--shared-secret`
+- `--shared-secret-mode`
+- `--shared-secret-accept`
+
+So you can do things like:
+
+```bash
+mes list \
+  --shared-secret mesh-secret-v2 \
+  --shared-secret-accept mesh-secret-v1
+```
+
+That lets a rotated observer accept both current and previous signed peers.
+
+### Interface selectors in the CLI
+
+The CLI also exposes interface policy flags:
+
+- `--enable-interface`
+- `--disable-interface`
+
+Examples:
+
+```bash
+mes list --enable-interface loopback-v4
+mes announce --id coder-01 --role rust-dev --project alpha --branch main --port 8080 --disable-interface ipv6
+mes list --enable-interface name:en0
+mes list --enable-interface addr:192.168.1.10
+```
+
+### Important behavior
+
+`mes list`, `mes get`, and `mes watch` run in **discovery-only mode**:
+
+- they browse the mesh,
+- they do **not** advertise themselves,
+- they are meant to behave like observers.
+
+That keeps query-oriented agent commands from polluting the LAN registry.
+
+---
+
 ## Public API overview
 
 Main entry points:
@@ -505,6 +678,11 @@ Common runtime methods:
 - `remove_capability(...).await`
 - `shutdown().await`
 
+Builder-specific controls now also include:
+
+- `discover_only()`
+- `advertise_local(...)`
+
 In most applications, you can ignore the lower-level internals and just work through `ZeroConfMesh`.
 
 ---
@@ -526,6 +704,8 @@ Available builder setters:
 - `event_capacity(...)`
 - `capability(...)`
 - `capabilities(...)`
+- `discover_only()`
+- `advertise_local(...)`
 - `enable_interface(...)`
 - `disable_interface(...)`
 - `shared_secret(...)`

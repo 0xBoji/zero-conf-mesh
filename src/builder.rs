@@ -56,6 +56,7 @@ pub struct ZeroConfMeshBuilder {
     event_capacity: usize,
     metadata: AgentMetadata,
     capabilities: Vec<String>,
+    advertise_local: bool,
     enabled_interfaces: Vec<NetworkInterface>,
     disabled_interfaces: Vec<NetworkInterface>,
     shared_secret_auth: Option<SharedSecretBuilderConfig>,
@@ -77,6 +78,7 @@ impl Default for ZeroConfMeshBuilder {
             event_capacity: DEFAULT_EVENT_CAPACITY,
             metadata: AgentMetadata::new(),
             capabilities: Vec::new(),
+            advertise_local: true,
             enabled_interfaces: Vec::new(),
             disabled_interfaces: Vec::new(),
             shared_secret_auth: None,
@@ -191,6 +193,20 @@ impl ZeroConfMeshBuilder {
         S: Into<String>,
     {
         self.capabilities = capabilities.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Controls whether the local node announces itself on the LAN.
+    #[must_use]
+    pub const fn advertise_local(mut self, advertise_local: bool) -> Self {
+        self.advertise_local = advertise_local;
+        self
+    }
+
+    /// Builds a discovery-only node that browses peers without advertising itself.
+    #[must_use]
+    pub const fn discover_only(mut self) -> Self {
+        self.advertise_local = false;
         self
     }
 
@@ -310,6 +326,7 @@ impl ZeroConfMeshBuilder {
         )?;
 
         let config = config
+            .with_advertise_local(self.advertise_local)
             .with_enabled_interfaces(self.enabled_interfaces)
             .with_disabled_interfaces(self.disabled_interfaces);
 
@@ -482,5 +499,20 @@ mod tests {
             .expect_err("reserved metadata should be rejected");
 
         assert!(matches!(err, ZeroConfError::ReservedMetadataKey { key } if key == "zcm_sig"));
+    }
+
+    #[test]
+    fn builder_should_support_discovery_only_mode() {
+        let config = ZeroConfMesh::builder()
+            .agent_id("agent-1")
+            .role("reviewer")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .discover_only()
+            .build_config()
+            .expect("config should build");
+
+        assert!(!config.advertise_local());
     }
 }

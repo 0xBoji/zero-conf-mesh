@@ -13,6 +13,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Explicit interface include/exclude controls for the embedded `mdns-sd` daemon.
 - Optional shared-secret signing and peer verification modes for authenticated LAN discovery.
 - Shared-secret rotation support so new nodes can verify peers signed with previous secrets during rollout.
+- First-party `mes` CLI with JSON-friendly `announce`, `list`, `get`, and `watch` commands for shell/LLM-driven agents.
+- Discovery-only runtime mode so observer/query processes do not announce themselves on the LAN.
 
 ### Changed
 - `capabilities` is now treated as a canonical first-class presence field instead of only ad-hoc metadata.
@@ -23,6 +25,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Builder/config handling for interface selection controls.
 - Shared-secret verified discovery and rejection of unsigned peers when verification is enabled.
 - Rotated shared-secret acceptance during transition windows.
+- CLI parser coverage for metadata and interface selectors.
 
 ## [0.1.2](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.1...v0.1.2) - 2026-04-02
 

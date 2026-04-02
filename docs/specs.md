@@ -8,7 +8,8 @@ The crate currently provides:
 - mDNS/DNS-SD advertisement for the local node,
 - background browsing for remote peers,
 - a concurrent in-memory registry with TTL-based stale-node eviction,
-- lifecycle events for join, update, and leave transitions.
+- lifecycle events for join, update, and leave transitions,
+- and a first-party CLI binary (`mes`) for shell/LLM-driven interaction.
 
 At the MVP level, every node should advertise enough data for peers to identify:
 - who the node is (`agent_id`),
@@ -37,6 +38,7 @@ The runtime is composed of four cooperating parts:
 2. **Broadcaster**: registers and re-announces the local service via `mdns-sd`.
 3. **Listener**: browses the configured service type and converts resolved peers into typed announcements.
 4. **Registry**: stores discovered agents and emits lifecycle events.
+5. **CLI (`mes`)**: optional text/JSON interface for agents that prefer shell commands over direct Rust integration.
 
 ### 3.1 Concurrency Model
 The crate uses `tokio` for orchestration and `mdns-sd` for network I/O.
@@ -79,6 +81,11 @@ The crate uses `tokio` for orchestration and `mdns-sd` for network I/O.
 6. Remote `ServiceResolved` events are parsed into `AgentAnnouncement` values, optionally verified against a shared secret, and then upserted into the registry.
 7. Remote `ServiceRemoved` events remove matching peers by instance name.
 8. On shutdown, the local service is unregistered, local registry state is removed, tasks stop, and the daemon is shut down.
+
+For observer-style use cases, the runtime also supports discovery-only mode where:
+- the listener and sweeper run,
+- the local node is not advertised,
+- the local node is not inserted into the registry.
 
 ## 4. Data Model
 
@@ -209,6 +216,8 @@ Current builder setters:
 - `event_capacity(...)`
 - `capability(...)`
 - `capabilities(...)`
+- `advertise_local(...)`
+- `discover_only()`
 - `enable_interface(...)`
 - `disable_interface(...)`
 - `shared_secret(...)`
@@ -365,6 +374,8 @@ This ratio provides:
 - **`uuid`**: default agent ID generation.
 - **`thiserror`**: typed library error definitions.
 - **`tracing`**: lightweight observability for runtime tasks and daemon interaction.
+- **`clap`**: first-party CLI argument parsing for the `mes` binary.
+- **`serde_json`**: JSON output for shell- and agent-friendly CLI responses.
 
 ## 9. Testing Strategy
 The current testing strategy is split into three layers.
@@ -411,6 +422,7 @@ The crate should treat docs as part of the test surface:
 - rustdoc examples on the crate root and primary public types should compile,
 - examples in `examples/` should stay buildable under `cargo test`,
 - README snippets should match the current public API.
+- CLI helper tests should cover parsers for metadata and interface selectors.
 
 In practice, the project should keep passing:
 - `cargo test`

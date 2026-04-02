@@ -104,7 +104,6 @@ impl ZeroConfMesh {
             Broadcaster::new(daemon.clone(), config.service_type(), config.host_name());
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        broadcaster.announce(&local_announcement)?;
         let listener = Listener::new(
             daemon.clone(),
             config.service_type(),
@@ -112,26 +111,36 @@ impl ZeroConfMesh {
             config.instance_name(),
             config.shared_secret_auth().cloned(),
         );
-        let listener_task = announce_and_start_listener(
-            &broadcaster,
-            &daemon,
-            &local_announcement,
-            listener,
-            registry.clone(),
-            shutdown_rx.clone(),
-            Listener::spawn,
-        )
-        .await?;
+        let listener_task = if config.advertise_local() {
+            announce_and_start_listener(
+                &broadcaster,
+                &daemon,
+                &local_announcement,
+                listener,
+                registry.clone(),
+                shutdown_rx.clone(),
+                Listener::spawn,
+            )
+            .await?
+        } else {
+            Listener::spawn(listener, registry.clone(), shutdown_rx.clone())?
+        };
 
-        registry.upsert_local(local_announcement).await;
+        if config.advertise_local() {
+            registry.upsert_local(local_announcement).await;
+        }
 
-        let heartbeat_task = spawn_heartbeat_task(
-            registry.clone(),
-            local_agent.clone(),
-            broadcaster.clone(),
-            config.heartbeat_interval(),
-            shutdown_rx.clone(),
-        );
+        let heartbeat_task = if config.advertise_local() {
+            Some(spawn_heartbeat_task(
+                registry.clone(),
+                local_agent.clone(),
+                broadcaster.clone(),
+                config.heartbeat_interval(),
+                shutdown_rx.clone(),
+            ))
+        } else {
+            None
+        };
         let sweeper_task =
             spawn_sweeper_task(registry.clone(), config.heartbeat_interval(), shutdown_rx);
 
@@ -142,7 +151,7 @@ impl ZeroConfMesh {
             broadcaster,
             daemon,
             shutdown_tx,
-            heartbeat_task: Mutex::new(Some(heartbeat_task)),
+            heartbeat_task: Mutex::new(heartbeat_task),
             sweeper_task: Mutex::new(Some(sweeper_task)),
             listener_task: Mutex::new(Some(listener_task)),
             shutdown_requested: AtomicBool::new(false),
@@ -407,14 +416,16 @@ impl ZeroConfMesh {
         let _ = self.shutdown_tx.send(true);
         let local_announcement = self.local_agent.read().await.clone();
 
-        if let Err(error) = self.broadcaster.unregister(&local_announcement).await {
-            warn!(?error, "failed to unregister local service");
-        }
+        if self.config.advertise_local() {
+            if let Err(error) = self.broadcaster.unregister(&local_announcement).await {
+                warn!(?error, "failed to unregister local service");
+            }
 
-        let _ = self
-            .registry
-            .remove_local(local_announcement.agent_id())
-            .await;
+            let _ = self
+                .registry
+                .remove_local(local_announcement.agent_id())
+                .await;
+        }
 
         if let Some(handle) = take_task(&self.heartbeat_task) {
             handle.await?;
@@ -434,6 +445,10 @@ impl ZeroConfMesh {
     }
 
     async fn refresh_local_agent(&self) -> Result<(), ZeroConfError> {
+        if !self.config.advertise_local() {
+            return Ok(());
+        }
+
         let announcement = {
             let mut local_agent = self.local_agent.write().await;
             if let Some(auth) = self.config.shared_secret_auth() {
@@ -883,6 +898,26 @@ mod tests {
             mesh.config().disabled_interfaces(),
             &[NetworkInterface::IPv6]
         );
+
+        mesh.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn mesh_should_support_discovery_only_mode_without_local_registry_entry() {
+        let mesh = ZeroConfMesh::builder()
+            .agent_id("agent-observer")
+            .role("observer")
+            .project("alpha")
+            .branch("main")
+            .port(8080)
+            .mdns_port(available_udp_port())
+            .discover_only()
+            .build()
+            .await
+            .expect("mesh should build");
+
+        assert!(mesh.registry().get("agent-observer").await.is_none());
+        assert!(mesh.agents().await.is_empty());
 
         mesh.shutdown().await.expect("shutdown should succeed");
     }
