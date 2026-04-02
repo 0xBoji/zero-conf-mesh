@@ -22,6 +22,7 @@ include = [
 ]
 
 [dependencies]
+async-stream = "0.3.6"
 axum = "0.8.4"
 base64 = "0.22.1"
 clap = { version = "4.5.39", features = ["derive"] }

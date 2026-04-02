@@ -29,6 +29,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `mes who` alias, `mes watch --write-events ...` JSONL logging, and `mes completions ...` generation.
 - `mes watch --exec ...` hook execution with JSON piped to stdin for reactive agent workflows.
 - `mes serve` local REST bridge for Python/TypeScript agent runtimes.
+- `mes serve /events` SSE stream for live mesh snapshots and lifecycle updates.
 
 ### Changed
 - `capabilities` is now treated as a canonical first-class presence field instead of only ad-hoc metadata.

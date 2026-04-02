@@ -665,6 +665,7 @@ Current endpoints:
 - `GET /health`
 - `GET /agents`
 - `GET /agents/{id}`
+- `GET /events` (Server-Sent Events / SSE)
 
 Examples:
 
@@ -672,7 +673,10 @@ Examples:
 curl http://127.0.0.1:9999/health
 curl 'http://127.0.0.1:9999/agents?role=reviewer&project=alpha'
 curl http://127.0.0.1:9999/agents/qa-01
+curl -N http://127.0.0.1:9999/events
 ```
+
+The `/events` endpoint emits a JSON SSE stream with an initial `snapshot` event followed by `joined`, `updated`, and `left` events as the mesh changes.
 
 Like the other query-oriented commands, `mes serve` runs on top of a discovery-only observer so the bridge itself does not pollute the mesh registry.
 

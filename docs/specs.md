@@ -38,7 +38,7 @@ The runtime is composed of four cooperating parts:
 2. **Broadcaster**: registers and re-announces the local service via `mdns-sd`.
 3. **Listener**: browses the configured service type and converts resolved peers into typed announcements.
 4. **Registry**: stores discovered agents and emits lifecycle events.
-5. **CLI (`mes`)**: optional text/JSON interface for agents that prefer shell commands over direct Rust integration, including observer lookups, event watching, state-file export, and shell completion generation.
+5. **CLI (`mes`)**: optional text/JSON interface for agents that prefer shell commands over direct Rust integration, including observer lookups, event watching, state-file export, shell completion generation, and a local REST/SSE bridge.
 
 ### 3.1 Concurrency Model
 The crate uses `tokio` for orchestration and `mdns-sd` for network I/O.
@@ -93,6 +93,7 @@ It also supports:
 - append-only JSONL event export,
 - shell-command hooks fed by JSON over stdin,
 - a local REST bridge for non-shell agent runtimes,
+- an SSE event stream for realtime agent observers,
 - shell completion generation.
 
 ## 4. Data Model

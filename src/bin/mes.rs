@@ -16,11 +16,15 @@ use std::{
     time::Duration,
 };
 
+use async_stream::stream;
 use axum::{
     Json, Router,
     extract::{Path as AxumPath, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{
+        IntoResponse,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::get,
 };
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
@@ -439,6 +443,7 @@ async fn run_serve(command: ServeCommand) -> Result<(), Box<dyn Error>> {
         .route("/health", get(health_handler))
         .route("/agents", get(list_agents_handler))
         .route("/agents/{id}", get(get_agent_handler))
+        .route("/events", get(events_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
@@ -737,6 +742,35 @@ async fn get_agent_handler(
         Some(agent) => (StatusCode::OK, Json(to_agent_record(&agent))).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+async fn events_handler(State(state): State<ServeState>) -> impl IntoResponse {
+    let mesh = Arc::clone(&state.mesh);
+    let mut events = mesh.subscribe();
+
+    let stream = stream! {
+        let snapshot = SnapshotRecord {
+            kind: "snapshot",
+            agents: mesh.agents().await.iter().map(to_agent_record).collect(),
+        };
+        if let Ok(data) = serde_json::to_string(&snapshot) {
+            yield Ok::<SseEvent, std::convert::Infallible>(
+                SseEvent::default().event("snapshot").data(data)
+            );
+        }
+
+        while let Ok(event) = events.recv().await {
+            if let Some(record) = to_event_record(&event)
+                && let Ok(data) = serde_json::to_string(&record)
+            {
+                yield Ok::<SseEvent, std::convert::Infallible>(
+                    SseEvent::default().event(record.kind).data(data)
+                );
+            }
+        }
+    };
+
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 fn parse_status(value: &str) -> Result<AgentStatus, String> {
