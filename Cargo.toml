@@ -5,6 +5,10 @@ edition = "2024"
 description = "Zero-configuration LAN service discovery for multi-agent systems via mDNS/DNS-SD"
 license = "MIT"
 repository = "https://github.com/0xBoji/zero-conf-mesh"
+homepage = "https://github.com/0xBoji/zero-conf-mesh"
+readme = "README.md"
+keywords = ["mdns", "dns-sd", "service-discovery", "lan", "agent"]
+categories = ["network-programming", "asynchronous"]
 rust-version = "1.85"
 include = [
     "/Cargo.toml",
