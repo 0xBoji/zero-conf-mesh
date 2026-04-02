@@ -15,6 +15,7 @@ RAW_SCRIPT_URL="https://raw.githubusercontent.com/0xBoji/coding_agent_mesh_prese
 # --- Colors & Styles ---
 BOLD="$(tput bold 2>/dev/null || echo '')"
 GREY="$(tput setaf 8 2>/dev/null || echo '')"
+BLUE="$(tput setaf 4 2>/dev/null || echo '')"
 CYAN="$(tput setaf 6 2>/dev/null || echo '')"
 GREEN="$(tput setaf 2 2>/dev/null || echo '')"
 YELLOW="$(tput setaf 3 2>/dev/null || echo '')"
@@ -30,12 +31,16 @@ success() { echo -e "${GREEN}${BOLD}success:${RESET} $1"; }
 banner() {
   cat <<EOF
 
-${CYAN}${BOLD}    ____ ___  __  __ ____ 
-   / ___/   ||  \/  |  _ \\
-  | |  / /| || |\/| | |_) |
-  | |__\ ___ || |  | |  __/ 
-   \____\___/ |_|  |_|_|    
-${RESET}
+${CYAN}${BOLD} ██████╗ █████╗ ███╗   ███╗██████╗ 
+██╔════╝██╔══██╗████╗ ████║██╔══██╗
+██║     ███████║██╔████╔██║██████╔╝
+██║     ██╔══██║██║╚██╔╝██║██╔═══╝ 
+╚██████╗██║  ██║██║ ╚═╝ ██║██║     
+ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     
+${RESET}${BLUE}╔════════════════════════════════════════════════╗
+║ coding agent mesh presence • shell-first JSON ║
+╚════════════════════════════════════════════════╝${RESET}
+
 ${BOLD}coding_agent_mesh_presence Installer${RESET}
 ${GREY}Zero-config LAN Discovery for Agents${RESET}
 
