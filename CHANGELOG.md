@@ -7,6 +7,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.0...v0.1.1) - 2026-04-02
+
+### Other
+
+- add ai keyword to crates metadata
+- add crates metadata keywords and categories
+- add automated crates release workflow
+
 ### Added
 - Detailed, onboarding-focused README with architecture, workflows, and failure-mode explanations.
 

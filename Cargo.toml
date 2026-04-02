@@ -1,6 +1,6 @@
 [package]
 name = "zero-conf-mesh"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Zero-configuration LAN service discovery for multi-agent systems via mDNS/DNS-SD"
 license = "MIT"
