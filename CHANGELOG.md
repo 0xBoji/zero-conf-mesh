@@ -7,6 +7,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/0xBoji/coding_agent_mesh_presence/compare/v0.1.5...v0.1.6) - 2026-04-02
+
+### Other
+
+- add curl-based camp installer
+- add bash install commands for the renamed crate
+
 ## [0.1.5](https://github.com/0xBoji/coding_agent_mesh_presence/compare/v0.1.4...v0.1.5) - 2026-04-02
 ### Added
 
