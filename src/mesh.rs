@@ -99,14 +99,16 @@ impl ZeroConfMesh {
             config.agent_id(),
             config.instance_name(),
         );
-        let listener_task = match listener.spawn(registry.clone(), shutdown_rx.clone()) {
-            Ok(task) => task,
-            Err(error) => {
-                let _ = broadcaster.unregister(&local_announcement).await;
-                let _ = daemon.shutdown();
-                return Err(error);
-            }
-        };
+        let listener_task = announce_and_start_listener(
+            &broadcaster,
+            &daemon,
+            &local_announcement,
+            listener,
+            registry.clone(),
+            shutdown_rx.clone(),
+            Listener::spawn,
+        )
+        .await?;
 
         registry.upsert_local(local_announcement).await;
 
@@ -375,6 +377,30 @@ impl Drop for ZeroConfMesh {
     }
 }
 
+async fn announce_and_start_listener<F>(
+    broadcaster: &Broadcaster,
+    daemon: &ServiceDaemon,
+    local_announcement: &AgentAnnouncement,
+    listener: Listener,
+    registry: Registry,
+    shutdown_rx: watch::Receiver<bool>,
+    start_listener: F,
+) -> Result<JoinHandle<()>, ZeroConfError>
+where
+    F: FnOnce(Listener, Registry, watch::Receiver<bool>) -> Result<JoinHandle<()>, ZeroConfError>,
+{
+    broadcaster.announce(local_announcement)?;
+
+    match start_listener(listener, registry, shutdown_rx) {
+        Ok(task) => Ok(task),
+        Err(error) => {
+            let _ = broadcaster.unregister(local_announcement).await;
+            let _ = daemon.shutdown();
+            Err(error)
+        }
+    }
+}
+
 fn spawn_heartbeat_task(
     registry: Registry,
     local_agent: std::sync::Arc<RwLock<AgentAnnouncement>>,
@@ -435,9 +461,11 @@ mod tests {
         time::Duration,
     };
 
+    use mdns_sd::ServiceEvent;
     use tokio::time;
 
     use super::*;
+    use crate::{DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_TTL, ZeroConfConfig};
 
     #[tokio::test]
     async fn mesh_should_update_local_status() {
@@ -466,6 +494,73 @@ mod tests {
 
         assert_eq!(agent.status(), AgentStatus::Busy);
         mesh.shutdown().await.expect("shutdown should succeed");
+    }
+
+    #[tokio::test]
+    async fn mesh_startup_should_cleanup_local_registration_when_listener_fails() {
+        let mdns_port = available_udp_port();
+        let service_type = "_mesh-startup-cleanup._tcp.local.";
+        let config = ZeroConfConfig::new(
+            "agent-cleanup",
+            "coder",
+            "alpha",
+            "main",
+            8080,
+            mdns_port,
+            service_type,
+            AgentStatus::Idle,
+            DEFAULT_HEARTBEAT_INTERVAL,
+            DEFAULT_TTL,
+            crate::AgentMetadata::new(),
+        )
+        .expect("config should be valid");
+        let registry = Registry::new(config.ttl());
+        let local_announcement = config
+            .local_announcement()
+            .expect("local announcement should build");
+        let daemon = ServiceDaemon::new_with_port(config.mdns_port())
+            .expect("daemon should bind to test mdns port");
+        let broadcaster =
+            Broadcaster::new(daemon.clone(), config.service_type(), config.host_name());
+        let listener = Listener::new(
+            daemon.clone(),
+            config.service_type(),
+            config.agent_id(),
+            config.instance_name(),
+        );
+        let (_shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        let err = announce_and_start_listener(
+            &broadcaster,
+            &daemon,
+            &local_announcement,
+            listener,
+            registry,
+            shutdown_rx,
+            |_listener, _registry, _shutdown_rx| {
+                Err(ZeroConfError::Mdns(mdns_sd::Error::Msg(
+                    "injected listener failure".to_owned(),
+                )))
+            },
+        )
+        .await
+        .expect_err("startup should fail when listener startup fails");
+
+        assert!(matches!(
+            err,
+            ZeroConfError::Mdns(mdns_sd::Error::Msg(message))
+            if message == "injected listener failure"
+        ));
+        assert!(
+            !service_should_resolve_on_network(
+                config.service_type(),
+                local_announcement.agent_id(),
+                local_announcement.instance_name(),
+                mdns_port,
+            )
+            .await,
+            "cleanup should remove the partially announced local service"
+        );
     }
 
     #[tokio::test]
@@ -745,6 +840,47 @@ mod tests {
             .local_addr()
             .expect("local address should be available")
             .port()
+    }
+
+    async fn service_should_resolve_on_network(
+        service_type: &str,
+        instance_name: &str,
+        fullname: &str,
+        mdns_port: u16,
+    ) -> bool {
+        let observer = ServiceDaemon::new_with_port(mdns_port)
+            .expect("observer daemon should bind to test mdns port");
+        let receiver = observer
+            .browse(service_type)
+            .expect("observer should browse service type");
+
+        let resolved = wait_for_resolved_service(receiver, instance_name, fullname).await;
+
+        let _ = observer.stop_browse(service_type);
+        let _ = observer.shutdown();
+
+        resolved
+    }
+
+    async fn wait_for_resolved_service(
+        receiver: mdns_sd::Receiver<ServiceEvent>,
+        instance_name: &str,
+        fullname: &str,
+    ) -> bool {
+        let deadline = time::Instant::now() + Duration::from_secs(2);
+        while time::Instant::now() < deadline {
+            match time::timeout(Duration::from_millis(200), receiver.recv_async()).await {
+                Ok(Ok(ServiceEvent::ServiceResolved(service)))
+                    if service.get_fullname() == fullname
+                        || service.get_fullname() == instance_name =>
+                {
+                    return true;
+                }
+                Ok(Ok(_)) | Ok(Err(_)) | Err(_) => {}
+            }
+        }
+
+        false
     }
 
     async fn wait_for_agent(mesh: &ZeroConfMesh, agent_id: &str) -> Option<AgentInfo> {
