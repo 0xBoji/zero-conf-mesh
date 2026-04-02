@@ -1,5 +1,5 @@
 [package]
-name = "zero-conf-mesh"
+name = "coding_agent_mesh_presence"
 version = "0.1.4"
 edition = "2024"
 description = "Zero-configuration LAN service discovery for multi-agent systems via mDNS/DNS-SD"

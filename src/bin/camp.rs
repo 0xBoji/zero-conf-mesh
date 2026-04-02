@@ -1,4 +1,4 @@
-//! `mes` is the command-line interface for `zero-conf-mesh`.
+//! `camp` is the command-line interface for `coding_agent_mesh_presence`.
 //!
 //! It is designed to be friendly to shell-driven and LLM-driven agent workflows:
 //! large banner on stderr, structured JSON on stdout.
@@ -29,25 +29,25 @@ use axum::{
 };
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
-use serde::{Deserialize, Serialize};
-use tokio::time;
-use zero_conf_mesh::{
+use coding_agent_mesh_presence::{
     AgentEvent, AgentInfo, AgentStatus, DepartureReason, EventOrigin, NetworkInterface,
     SharedSecretMode, ZeroConfMesh,
 };
+use serde::{Deserialize, Serialize};
+use tokio::time;
 
-const DEFAULT_CONFIG_FILE_NAME: &str = ".mes.toml";
+const DEFAULT_CONFIG_FILE_NAME: &str = ".camp.toml";
 const DEFAULT_AGENT_ROLE: &str = "agent";
 const DEFAULT_AGENT_PROJECT: &str = "default";
 const DEFAULT_AGENT_BRANCH: &str = "main";
 const DEFAULT_AGENT_PORT: u16 = 7000;
 const DEFAULT_HEARTBEAT_MS: u64 = 30_000;
 const DEFAULT_TTL_MS: u64 = 120_000;
-const AGENTS_GUIDANCE_START: &str = "<!-- MES:START -->";
-const AGENTS_GUIDANCE_END: &str = "<!-- MES:END -->";
+const AGENTS_GUIDANCE_START: &str = "<!-- CAMP:START -->";
+const AGENTS_GUIDANCE_END: &str = "<!-- CAMP:END -->";
 
 #[derive(Parser, Debug)]
-#[command(name = "mes", version, about = "Zero-conf agent discovery CLI", long_about = None)]
+#[command(name = "camp", version, about = "Coding agent mesh presence CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -55,9 +55,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Create a local mes config and inject project usage guidance into AGENTS.md.
+    /// Create a local camp config and inject project usage guidance into AGENTS.md.
     Init(InitCommand),
-    /// Announce the local agent described by the mes config file.
+    /// Announce the local agent described by the camp config file.
     Up(UpCommand),
     /// Announce a local agent on the LAN and keep it online until interrupted.
     Announce(AnnounceCommand),
@@ -70,7 +70,7 @@ enum Command {
     Watch(WatchCommand),
     /// Start a local REST bridge for non-shell agent frameworks.
     Serve(ServeCommand),
-    /// Generate shell completion scripts for mes.
+    /// Generate shell completion scripts for camp.
     Completions(CompletionsCommand),
 }
 
@@ -93,14 +93,14 @@ impl From<SharedSecretModeArg> for SharedSecretMode {
 
 #[derive(Args, Debug, Clone)]
 struct DiscoveryOptions {
-    /// Read discovery defaults from a mes TOML config file.
+    /// Read discovery defaults from a camp TOML config file.
     #[arg(long)]
     config: Option<PathBuf>,
     /// Service type to browse.
-    #[arg(long, default_value = zero_conf_mesh::DEFAULT_SERVICE_TYPE)]
+    #[arg(long, default_value = coding_agent_mesh_presence::DEFAULT_SERVICE_TYPE)]
     service_type: String,
     /// UDP port used by the embedded mDNS daemon.
-    #[arg(long, default_value_t = zero_conf_mesh::DEFAULT_MDNS_PORT)]
+    #[arg(long, default_value_t = coding_agent_mesh_presence::DEFAULT_MDNS_PORT)]
     mdns_port: u16,
     /// Milliseconds to wait for discovery before reading the registry.
     #[arg(long, default_value_t = 1_500)]
@@ -124,13 +124,13 @@ struct DiscoveryOptions {
 
 #[derive(Args, Debug)]
 struct InitCommand {
-    /// Output mes config path.
+    /// Output camp config path.
     #[arg(long, default_value = DEFAULT_CONFIG_FILE_NAME)]
     config: PathBuf,
-    /// AGENTS.md file that should receive mes usage guidance.
+    /// AGENTS.md file that should receive camp usage guidance.
     #[arg(long, default_value = "AGENTS.md")]
     agents_file: PathBuf,
-    /// Overwrite an existing mes config file.
+    /// Overwrite an existing camp config file.
     #[arg(long)]
     force: bool,
     /// Local agent id. Defaults to a host/user-derived slug.
@@ -158,10 +158,10 @@ struct InitCommand {
     #[arg(long = "metadata", value_parser = parse_key_value)]
     metadata: Vec<(String, String)>,
     /// Service type to announce.
-    #[arg(long, default_value = zero_conf_mesh::DEFAULT_SERVICE_TYPE)]
+    #[arg(long, default_value = coding_agent_mesh_presence::DEFAULT_SERVICE_TYPE)]
     service_type: String,
     /// UDP port used by the embedded mDNS daemon.
-    #[arg(long, default_value_t = zero_conf_mesh::DEFAULT_MDNS_PORT)]
+    #[arg(long, default_value_t = coding_agent_mesh_presence::DEFAULT_MDNS_PORT)]
     mdns_port: u16,
     /// Heartbeat interval in milliseconds.
     #[arg(long, default_value_t = DEFAULT_HEARTBEAT_MS)]
@@ -188,7 +188,7 @@ struct InitCommand {
 
 #[derive(Args, Debug)]
 struct UpCommand {
-    /// mes TOML config to announce from.
+    /// camp TOML config to announce from.
     #[arg(long, default_value = DEFAULT_CONFIG_FILE_NAME)]
     config: PathBuf,
     /// Optional maximum lifetime in seconds; otherwise waits for Ctrl-C.
@@ -226,10 +226,10 @@ struct AnnounceCommand {
     #[arg(long = "metadata", value_parser = parse_key_value)]
     metadata: Vec<(String, String)>,
     /// Service type to announce.
-    #[arg(long, default_value = zero_conf_mesh::DEFAULT_SERVICE_TYPE)]
+    #[arg(long, default_value = coding_agent_mesh_presence::DEFAULT_SERVICE_TYPE)]
     service_type: String,
     /// UDP port used by the embedded mDNS daemon.
-    #[arg(long, default_value_t = zero_conf_mesh::DEFAULT_MDNS_PORT)]
+    #[arg(long, default_value_t = coding_agent_mesh_presence::DEFAULT_MDNS_PORT)]
     mdns_port: u16,
     /// Heartbeat interval in milliseconds.
     #[arg(long, default_value_t = 30_000)]
@@ -380,13 +380,13 @@ struct ServeState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct MesConfigFile {
-    agent: MesAgentConfig,
-    discovery: MesDiscoveryConfig,
+struct CampConfigFile {
+    agent: CampAgentConfig,
+    discovery: CampDiscoveryConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct MesAgentConfig {
+struct CampAgentConfig {
     id: String,
     role: String,
     project: String,
@@ -400,7 +400,7 @@ struct MesAgentConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct MesDiscoveryConfig {
+struct CampDiscoveryConfig {
     service_type: String,
     mdns_port: u16,
     heartbeat_ms: u64,
@@ -449,9 +449,9 @@ struct ResolvedDiscoveryOptions {
     disable_interface: Vec<String>,
 }
 
-impl From<MesConfigFile> for AnnounceSettings {
-    fn from(value: MesConfigFile) -> Self {
-        let MesConfigFile { agent, discovery } = value;
+impl From<CampConfigFile> for AnnounceSettings {
+    fn from(value: CampConfigFile) -> Self {
+        let CampConfigFile { agent, discovery } = value;
         Self {
             id: agent.id,
             role: agent.role,
@@ -497,7 +497,7 @@ fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
     let config_path = command.config;
     if config_path.exists() && !command.force {
         return Err(format!(
-            "mes config already exists at {}; rerun with --force to overwrite",
+            "camp config already exists at {}; rerun with --force to overwrite",
             config_path.display()
         )
         .into());
@@ -509,8 +509,8 @@ fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
         .id
         .unwrap_or_else(|| infer_default_agent_id(&project, &branch));
 
-    let config = MesConfigFile {
-        agent: MesAgentConfig {
+    let config = CampConfigFile {
+        agent: CampAgentConfig {
             id: agent_id,
             role: command
                 .role
@@ -522,7 +522,7 @@ fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
             capabilities: command.capabilities,
             metadata: command.metadata.into_iter().collect(),
         },
-        discovery: MesDiscoveryConfig {
+        discovery: CampDiscoveryConfig {
             service_type: command.service_type,
             mdns_port: command.mdns_port,
             heartbeat_ms: command.heartbeat_ms,
@@ -535,20 +535,20 @@ fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
         },
     };
 
-    write_mes_config(&config_path, &config)?;
+    write_camp_config(&config_path, &config)?;
     upsert_agents_guidance(&command.agents_file, &config_path, &config)?;
 
-    eprintln!("mes: wrote {}", config_path.display());
-    eprintln!("mes: updated {}", command.agents_file.display());
-    eprintln!("mes: next steps");
-    eprintln!("  1. mes up");
+    eprintln!("camp: wrote {}", config_path.display());
+    eprintln!("camp: updated {}", command.agents_file.display());
+    eprintln!("camp: next steps");
+    eprintln!("  1. camp up");
     eprintln!(
-        "  2. mes who --config {} --project {}",
+        "  2. camp who --config {} --project {}",
         config_path.display(),
         config.agent.project
     );
     eprintln!(
-        "  3. mes watch --config {} --write-state /tmp/{}-mes-state.json",
+        "  3. camp watch --config {} --write-state /tmp/{}-camp-state.json",
         config_path.display(),
         slugify(&config.agent.project)
     );
@@ -557,7 +557,7 @@ fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
 }
 
 async fn run_up(command: UpCommand) -> Result<(), Box<dyn Error>> {
-    let config = read_mes_config(&command.config)?;
+    let config = read_camp_config(&command.config)?;
     let settings = AnnounceSettings::from(config);
     run_announce_with_settings(settings, command.duration_secs, command.json).await
 }
@@ -680,7 +680,7 @@ async fn run_serve(command: ServeCommand) -> Result<(), Box<dyn Error>> {
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
-    eprintln!("mes: serving local mesh bridge on http://{bind_addr}");
+    eprintln!("camp: serving local mesh bridge on http://{bind_addr}");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
@@ -694,14 +694,14 @@ async fn run_serve(command: ServeCommand) -> Result<(), Box<dyn Error>> {
 
 fn run_completions(command: CompletionsCommand) -> Result<(), Box<dyn Error>> {
     let mut cli = Cli::command();
-    generate(command.shell, &mut cli, "mes", &mut std::io::stdout());
+    generate(command.shell, &mut cli, "camp", &mut std::io::stdout());
     Ok(())
 }
 
 async fn build_observer(options: &DiscoveryOptions) -> Result<ZeroConfMesh, Box<dyn Error>> {
     let resolved = resolve_discovery_options(options)?;
     let mut builder = ZeroConfMesh::builder()
-        .agent_id(format!("mes-observer-{}", uuid::Uuid::new_v4()))
+        .agent_id(format!("camp-observer-{}", uuid::Uuid::new_v4()))
         .role("observer")
         .project("observer")
         .branch("watch")
@@ -766,7 +766,7 @@ async fn run_announce_with_settings(
     let mesh = builder.build().await?;
 
     eprintln!(
-        "mes: announcing {} on {} ({})",
+        "camp: announcing {} on {} ({})",
         mesh.local_agent_id(),
         mesh.config().project(),
         mesh.config().branch()
@@ -796,7 +796,7 @@ fn resolve_discovery_options(
     options: &DiscoveryOptions,
 ) -> Result<ResolvedDiscoveryOptions, Box<dyn Error>> {
     if let Some(path) = options.config.as_deref() {
-        let config = read_mes_config(path)?;
+        let config = read_camp_config(path)?;
         return Ok(ResolvedDiscoveryOptions {
             service_type: config.discovery.service_type,
             mdns_port: config.discovery.mdns_port,
@@ -932,9 +932,9 @@ fn matches_agent_query(agent: &AgentInfo, query: &AgentQuery) -> bool {
 }
 
 fn apply_metadata(
-    mut builder: zero_conf_mesh::ZeroConfMeshBuilder,
+    mut builder: coding_agent_mesh_presence::ZeroConfMeshBuilder,
     metadata: Vec<(String, String)>,
-) -> zero_conf_mesh::ZeroConfMeshBuilder {
+) -> coding_agent_mesh_presence::ZeroConfMeshBuilder {
     for (key, value) in metadata {
         builder = builder.metadata(key, value);
     }
@@ -942,11 +942,11 @@ fn apply_metadata(
 }
 
 fn apply_shared_secret(
-    builder: zero_conf_mesh::ZeroConfMeshBuilder,
+    builder: coding_agent_mesh_presence::ZeroConfMeshBuilder,
     shared_secret: Option<String>,
     shared_secret_accept: Vec<String>,
     mode: SharedSecretMode,
-) -> zero_conf_mesh::ZeroConfMeshBuilder {
+) -> coding_agent_mesh_presence::ZeroConfMeshBuilder {
     match shared_secret {
         Some(secret) if shared_secret_accept.is_empty() => {
             builder.shared_secret_with_mode(secret, mode)
@@ -959,10 +959,10 @@ fn apply_shared_secret(
 }
 
 fn apply_interfaces(
-    mut builder: zero_conf_mesh::ZeroConfMeshBuilder,
+    mut builder: coding_agent_mesh_presence::ZeroConfMeshBuilder,
     enabled: Vec<String>,
     disabled: Vec<String>,
-) -> Result<zero_conf_mesh::ZeroConfMeshBuilder, Box<dyn Error>> {
+) -> Result<coding_agent_mesh_presence::ZeroConfMeshBuilder, Box<dyn Error>> {
     for interface in enabled {
         builder = builder.enable_interface(parse_network_interface(&interface)?);
     }
@@ -1137,6 +1137,10 @@ fn parse_network_interface(value: &str) -> Result<NetworkInterface, String> {
 }
 
 fn infer_default_project() -> String {
+    if let Some(package_name) = read_local_package_name() {
+        return package_name;
+    }
+
     std::env::current_dir()
         .ok()
         .and_then(|path| {
@@ -1160,7 +1164,7 @@ fn infer_default_agent_id(project: &str, branch: &str) -> String {
         .filter(|value| !value.is_empty())
         .or_else(|| try_command_stdout(&["hostname"]).filter(|value| !value.is_empty()));
     let raw = [
-        Some("mes".to_owned()),
+        Some("camp".to_owned()),
         user,
         host,
         Some(project.to_owned()),
@@ -1190,7 +1194,7 @@ fn slugify(value: &str) -> String {
 
     let trimmed = slug.trim_matches('-');
     if trimmed.is_empty() {
-        "mes-agent".to_owned()
+        "camp-agent".to_owned()
     } else {
         trimmed.to_owned()
     }
@@ -1212,12 +1216,23 @@ fn try_command_stdout(argv: &[&str]) -> Option<String> {
     }
 }
 
-fn read_mes_config(path: &Path) -> Result<MesConfigFile, Box<dyn Error>> {
+fn read_local_package_name() -> Option<String> {
+    let manifest = fs::read_to_string("Cargo.toml").ok()?;
+    let value: toml::Value = toml::from_str(&manifest).ok()?;
+    value
+        .get("package")?
+        .get("name")?
+        .as_str()
+        .map(str::to_owned)
+        .filter(|name| !name.trim().is_empty())
+}
+
+fn read_camp_config(path: &Path) -> Result<CampConfigFile, Box<dyn Error>> {
     let contents = fs::read_to_string(path)?;
     Ok(toml::from_str(&contents)?)
 }
 
-fn write_mes_config(path: &Path, config: &MesConfigFile) -> Result<(), Box<dyn Error>> {
+fn write_camp_config(path: &Path, config: &CampConfigFile) -> Result<(), Box<dyn Error>> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
@@ -1233,7 +1248,7 @@ fn write_mes_config(path: &Path, config: &MesConfigFile) -> Result<(), Box<dyn E
 fn upsert_agents_guidance(
     path: &Path,
     config_path: &Path,
-    config: &MesConfigFile,
+    config: &CampConfigFile,
 ) -> Result<(), Box<dyn Error>> {
     let parent = path
         .parent()
@@ -1254,21 +1269,21 @@ fn upsert_agents_guidance(
     Ok(())
 }
 
-fn render_agents_guidance(config_path: &Path, config: &MesConfigFile) -> String {
-    let state_file = format!("/tmp/{}-mes-state.json", slugify(&config.agent.project));
+fn render_agents_guidance(config_path: &Path, config: &CampConfigFile) -> String {
+    let state_file = format!("/tmp/{}-camp-state.json", slugify(&config.agent.project));
     let config_display = config_path.display();
     format!(
-        "{AGENTS_GUIDANCE_START}\n## mes agent workflow\n\n\
-This repository is configured to use `mes` for local LAN agent discovery.\n\n\
-If `{config_display}` is missing on this machine, run `mes init --force` before using the commands below.\n\n\
+        "{AGENTS_GUIDANCE_START}\n## camp agent workflow\n\n\
+This repository is configured to use `camp` for local LAN agent discovery.\n\n\
+If `{config_display}` is missing on this machine, run `camp init --force` before using the commands below.\n\n\
 Recommended commands for AI agents in this repo:\n\
-- bring this repo's agent online: `mes up`\n\
-- list peers for this project: `mes who --config {config_display} --project {project}`\n\
-- find a reviewer quickly: `mes who --config {config_display} --project {project} --role reviewer`\n\
-- mirror live mesh state to a file: `mes watch --config {config_display} --write-state {state_file}`\n\
-- start the local HTTP + SSE bridge: `mes serve --config {config_display} --bind 127.0.0.1:9999`\n\n\
+- bring this repo's agent online: `camp up`\n\
+- list peers for this project: `camp who --config {config_display} --project {project}`\n\
+- find a reviewer quickly: `camp who --config {config_display} --project {project} --role reviewer`\n\
+- mirror live mesh state to a file: `camp watch --config {config_display} --write-state {state_file}`\n\
+- start the local HTTP + SSE bridge: `camp serve --config {config_display} --bind 127.0.0.1:9999`\n\n\
 The generated config already includes this repo's defaults for project, branch, ports, and discovery settings.\n\
-Prefer reusing a single long-running `mes up` process instead of starting multiple announcers for the same machine.\n\
+Prefer reusing a single long-running `camp up` process instead of starting multiple announcers for the same machine.\n\
 {AGENTS_GUIDANCE_END}\n",
         project = config.agent.project,
     )
@@ -1308,15 +1323,15 @@ fn json_line_string<T: Serialize>(value: &T) -> Result<String, Box<dyn Error>> {
 fn print_banner() {
     eprintln!(
         "\x1b[95m\
-███╗   ███╗███████╗ ██████╗ \n\
-████╗ ████║██╔════╝██╔════╝ \n\
-██╔████╔██║█████╗  ╚█████╗  \n\
-██║╚██╔╝██║██╔══╝   ╚═══██╗ \n\
-██║ ╚═╝ ██║███████╗██████╔╝ \n\
-╚═╝     ╚═╝╚══════╝╚═════╝  \n\
-\x1b[94m╔══════════════════════════════════════════════╗\n\
-║  zero-conf mesh agent cli • shell-first JSON ║\n\
-╚══════════════════════════════════════════════╝\x1b[0m\n"
+ ██████╗ █████╗ ███╗   ███╗██████╗ \n\
+██╔════╝██╔══██╗████╗ ████║██╔══██╗\n\
+██║     ███████║██╔████╔██║██████╔╝\n\
+██║     ██╔══██║██║╚██╔╝██║██╔═══╝ \n\
+╚██████╗██║  ██║██║ ╚═╝ ██║██║     \n\
+ ╚═════╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     \n\
+\x1b[94m╔════════════════════════════════════════════════╗\n\
+║ coding agent mesh presence • shell-first JSON ║\n\
+╚════════════════════════════════════════════════╝\x1b[0m\n"
     );
 }
 
@@ -1356,8 +1371,8 @@ fn run_exec_hook(command: &str, kind: &str, payload: &str) -> Result<(), Box<dyn
     let mut child = ProcessCommand::new("/bin/sh")
         .arg("-lc")
         .arg(command)
-        .env("MES_KIND", kind)
-        .env("MES_EVENT_JSON", payload)
+        .env("CAMP_KIND", kind)
+        .env("CAMP_EVENT_JSON", payload)
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -1372,7 +1387,7 @@ fn run_exec_hook(command: &str, kind: &str, payload: &str) -> Result<(), Box<dyn
     if status.success() {
         Ok(())
     } else {
-        Err(format!("mes exec hook failed with status {status}").into())
+        Err(format!("camp exec hook failed with status {status}").into())
     }
 }
 
@@ -1380,7 +1395,7 @@ fn temporary_state_path(path: &Path) -> PathBuf {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("mes-state.json");
+        .unwrap_or("camp-state.json");
     let tmp_name = format!(".{file_name}.tmp");
     path.with_file_name(tmp_name)
 }
@@ -1439,7 +1454,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
             .as_nanos();
-        let path = env::temp_dir().join(format!("mes-events-{unique}.jsonl"));
+        let path = env::temp_dir().join(format!("camp-events-{unique}.jsonl"));
         let payload = SnapshotRecord {
             kind: "snapshot",
             agents: Vec::new(),
@@ -1461,7 +1476,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should move forward")
             .as_nanos();
-        let path = env::temp_dir().join(format!("mes-hook-{unique}.json"));
+        let path = env::temp_dir().join(format!("camp-hook-{unique}.json"));
         let payload = r#"{"kind":"snapshot"}"#;
         let command = format!("cat > {}", path.display());
 
@@ -1474,9 +1489,9 @@ mod tests {
     }
 
     #[test]
-    fn replace_marked_block_should_replace_existing_mes_guidance() {
-        let existing = "# Project\n\nold\n<!-- MES:START -->\nold block\n<!-- MES:END -->\n";
-        let replacement = "<!-- MES:START -->\nnew block\n<!-- MES:END -->";
+    fn replace_marked_block_should_replace_existing_camp_guidance() {
+        let existing = "# Project\n\nold\n<!-- CAMP:START -->\nold block\n<!-- CAMP:END -->\n";
+        let replacement = "<!-- CAMP:START -->\nnew block\n<!-- CAMP:END -->";
 
         let updated = replace_marked_block(
             existing,
@@ -1491,9 +1506,9 @@ mod tests {
     }
 
     #[test]
-    fn mes_config_should_round_trip_through_toml() {
-        let config = MesConfigFile {
-            agent: MesAgentConfig {
+    fn camp_config_should_round_trip_through_toml() {
+        let config = CampConfigFile {
+            agent: CampAgentConfig {
                 id: "coder-01".to_owned(),
                 role: "reviewer".to_owned(),
                 project: "alpha".to_owned(),
@@ -1503,9 +1518,9 @@ mod tests {
                 capabilities: vec!["review".to_owned()],
                 metadata: BTreeMap::from([(String::from("team"), String::from("core"))]),
             },
-            discovery: MesDiscoveryConfig {
-                service_type: zero_conf_mesh::DEFAULT_SERVICE_TYPE.to_owned(),
-                mdns_port: zero_conf_mesh::DEFAULT_MDNS_PORT,
+            discovery: CampDiscoveryConfig {
+                service_type: coding_agent_mesh_presence::DEFAULT_SERVICE_TYPE.to_owned(),
+                mdns_port: coding_agent_mesh_presence::DEFAULT_MDNS_PORT,
                 heartbeat_ms: DEFAULT_HEARTBEAT_MS,
                 ttl_ms: DEFAULT_TTL_MS,
                 shared_secret: Some("secret".to_owned()),
@@ -1517,7 +1532,7 @@ mod tests {
         };
 
         let serialized = toml::to_string_pretty(&config).expect("config should serialize");
-        let round_trip: MesConfigFile =
+        let round_trip: CampConfigFile =
             toml::from_str(&serialized).expect("config should deserialize");
 
         assert_eq!(round_trip.agent.id, "coder-01");
@@ -1525,6 +1540,14 @@ mod tests {
         assert_eq!(
             round_trip.discovery.shared_secret.as_deref(),
             Some("secret")
+        );
+    }
+
+    #[test]
+    fn infer_default_project_should_prefer_manifest_name() {
+        assert_eq!(
+            infer_default_project(),
+            "coding_agent_mesh_presence".to_owned()
         );
     }
 }

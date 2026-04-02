@@ -1,7 +1,7 @@
-# Technical Specification: `zero-conf-mesh`
+# Technical Specification: `coding_agent_mesh_presence`
 
 ## 1. Overview
-`zero-conf-mesh` is a Rust library for zero-configuration LAN service discovery for multi-agent systems using mDNS and DNS-SD. It is designed for local-network coordination only: agents advertise themselves, discover peers, and maintain an in-memory registry of currently known nodes without requiring any central service.
+`coding_agent_mesh_presence` is a Rust library for zero-configuration LAN service discovery for multi-agent systems using mDNS and DNS-SD. It is designed for local-network coordination only: agents advertise themselves, discover peers, and maintain an in-memory registry of currently known nodes without requiring any central service.
 
 The crate currently provides:
 - a typed async-first builder and runtime handle,
@@ -9,7 +9,7 @@ The crate currently provides:
 - background browsing for remote peers,
 - a concurrent in-memory registry with TTL-based stale-node eviction,
 - lifecycle events for join, update, and leave transitions,
-- and a first-party CLI binary (`mes`) for shell/LLM-driven interaction, including repo-local bootstrap via `mes init`.
+- and a first-party CLI binary (`camp`) for shell/LLM-driven interaction, including repo-local bootstrap via `camp init`.
 
 At the MVP level, every node should advertise enough data for peers to identify:
 - who the node is (`agent_id`),
@@ -38,7 +38,7 @@ The runtime is composed of four cooperating parts:
 2. **Broadcaster**: registers and re-announces the local service via `mdns-sd`.
 3. **Listener**: browses the configured service type and converts resolved peers into typed announcements.
 4. **Registry**: stores discovered agents and emits lifecycle events.
-5. **CLI (`mes`)**: optional text/JSON interface for agents that prefer shell commands over direct Rust integration, including observer lookups, event watching, state-file export, shell completion generation, and a local REST/SSE bridge.
+5. **CLI (`camp`)**: optional text/JSON interface for agents that prefer shell commands over direct Rust integration, including observer lookups, event watching, state-file export, shell completion generation, and a local REST/SSE bridge.
 
 ### 3.1 Concurrency Model
 The crate uses `tokio` for orchestration and `mdns-sd` for network I/O.
@@ -87,9 +87,9 @@ For observer-style use cases, the runtime also supports discovery-only mode wher
 - the local node is not advertised,
 - the local node is not inserted into the registry.
 
-The `mes` CLI builds on this mode for `list`, `get`, and `watch` commands, and can optionally mirror the current registry to a JSON file for file-oriented agents.
+The `camp` CLI builds on this mode for `list`, `get`, and `watch` commands, and can optionally mirror the current registry to a JSON file for file-oriented agents.
 It also supports:
-- `init` for creating `.mes.toml` plus repository-specific AGENTS guidance,
+- `init` for creating `.camp.toml` plus repository-specific AGENTS guidance,
 - `up` for announcing directly from the generated config,
 - `who` as a human/agent-friendly alias for `list`,
 - append-only JSONL event export,
@@ -385,9 +385,9 @@ This ratio provides:
 - **`uuid`**: default agent ID generation.
 - **`thiserror`**: typed library error definitions.
 - **`tracing`**: lightweight observability for runtime tasks and daemon interaction.
-- **`clap`**: first-party CLI argument parsing for the `mes` binary.
+- **`clap`**: first-party CLI argument parsing for the `camp` binary.
 - **`serde_json`**: JSON output for shell- and agent-friendly CLI responses.
-- **`toml`**: repo-local CLI config parsing and generation for `.mes.toml`.
+- **`toml`**: repo-local CLI config parsing and generation for `.camp.toml`.
 
 ## 9. Testing Strategy
 The current testing strategy is split into three layers.

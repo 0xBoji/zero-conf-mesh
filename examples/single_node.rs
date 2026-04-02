@@ -1,4 +1,4 @@
-//! Minimal single-node `zero-conf-mesh` demo.
+//! Minimal single-node `coding_agent_mesh_presence` demo.
 //!
 //! Run with:
 //! - `cargo run --example single_node`
@@ -6,7 +6,7 @@
 
 use std::{error::Error, time::Duration};
 
-use zero_conf_mesh::{DEFAULT_MDNS_PORT, ZeroConfMesh};
+use coding_agent_mesh_presence::{DEFAULT_MDNS_PORT, ZeroConfMesh};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

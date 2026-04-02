@@ -1,13 +1,13 @@
-# zero-conf-mesh
+# coding_agent_mesh_presence
 
 Zero-configuration LAN service discovery for multi-agent systems in Rust using mDNS/DNS-SD.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](#installation)
-[![crates.io](https://img.shields.io/crates/v/zero-conf-mesh.svg)](https://crates.io/crates/zero-conf-mesh)
+[![crates.io](https://img.shields.io/crates/v/coding_agent_mesh_presence.svg)](https://crates.io/crates/coding_agent_mesh_presence)
 [![CI](https://github.com/0xBoji/zero-conf-mesh/actions/workflows/ci.yml/badge.svg)](https://github.com/0xBoji/zero-conf-mesh/actions/workflows/ci.yml)
 
-> Think of `zero-conf-mesh` as a small local-network presence layer for agents and tools:
+> Think of `coding_agent_mesh_presence` as a small local-network presence layer for agents and tools:
 > each node advertises who it is, what project/branch it belongs to, and what it is doing right now,
 > while every peer keeps a live in-memory registry of the LAN.
 
@@ -30,7 +30,7 @@ Zero-configuration LAN service discovery for multi-agent systems in Rust using m
   - [3. Subscribe to lifecycle events](#3-subscribe-to-lifecycle-events)
   - [4. Update runtime state without rebuilding](#4-update-runtime-state-without-rebuilding)
 - [Examples included in this repo](#examples-included-in-this-repo)
-- [CLI for agents: `mes`](#cli-for-agents-mes)
+- [CLI for agents: `camp`](#cli-for-agents-camp)
 - [Public API overview](#public-api-overview)
 - [Builder configuration reference](#builder-configuration-reference)
 - [Runtime update semantics](#runtime-update-semantics)
@@ -49,7 +49,7 @@ Zero-configuration LAN service discovery for multi-agent systems in Rust using m
 
 ## What this crate is
 
-`zero-conf-mesh` is a Rust library for **local-only, zero-configuration service discovery**.
+`coding_agent_mesh_presence` is a Rust library for **local-only, zero-configuration service discovery**.
 
 It helps a set of agents, workers, tools, or small services on the same LAN:
 
@@ -80,7 +80,7 @@ Without a shared discovery layer, you end up with some combination of:
 - no clear signal for when a peer crashed vs shut down gracefully,
 - duplicated “presence” code in every tool.
 
-`zero-conf-mesh` exists to make that coordination layer:
+`coding_agent_mesh_presence` exists to make that coordination layer:
 
 - **automatic** on a shared LAN,
 - **typed** rather than stringly-typed everywhere,
@@ -157,7 +157,7 @@ The current implementation also keeps richer metadata such as:
 If you just want the shortest path to a working node:
 
 ```rust
-use zero_conf_mesh::{AgentStatus, ZeroConfMesh};
+use coding_agent_mesh_presence::{AgentStatus, ZeroConfMesh};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -200,7 +200,7 @@ That gets you:
 
 ```toml
 [dependencies]
-zero-conf-mesh = { path = "." }
+coding_agent_mesh_presence = { path = "." }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -211,7 +211,7 @@ When published, replace the path dependency with the crate version.
 
 ## The mental model
 
-The easiest way to reason about `zero-conf-mesh` is:
+The easiest way to reason about `coding_agent_mesh_presence` is:
 
 1. **Build a config**
 2. **Start one local runtime**
@@ -315,7 +315,7 @@ This makes crash recovery a first-class behavior instead of an afterthought.
 ## 1. Start a single node
 
 ```rust
-use zero_conf_mesh::ZeroConfMesh;
+use coding_agent_mesh_presence::ZeroConfMesh;
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -342,7 +342,7 @@ Use this when you just need one node to come online and advertise itself.
 ## 2. Query the live registry
 
 ```rust
-use zero_conf_mesh::{AgentStatus, ZeroConfMesh};
+use coding_agent_mesh_presence::{AgentStatus, ZeroConfMesh};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -371,7 +371,7 @@ This is the “who is currently on the LAN?” path.
 ## 3. Subscribe to lifecycle events
 
 ```rust
-use zero_conf_mesh::{AgentEvent, ZeroConfMesh};
+use coding_agent_mesh_presence::{AgentEvent, ZeroConfMesh};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -416,7 +416,7 @@ Use this if your application reacts to membership changes in real time instead o
 ## 4. Update runtime state without rebuilding
 
 ```rust
-use zero_conf_mesh::{AgentStatus, ZeroConfMesh};
+use coding_agent_mesh_presence::{AgentStatus, ZeroConfMesh};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -467,9 +467,9 @@ ZCM_MDNS_PORT=5454 cargo run --example two_nodes
 
 ---
 
-## CLI for agents: `mes`
+## CLI for agents: `camp`
 
-This repository now also ships a CLI binary named **`mes`**.
+This repository now also ships a CLI binary named **`camp`**.
 
 It is designed specifically for shell-driven and LLM-driven workflows:
 
@@ -478,7 +478,7 @@ It is designed specifically for shell-driven and LLM-driven workflows:
 - visual banner on `stderr` so JSON consumers are not broken,
 - no Python/TypeScript bindings required.
 
-### Why `mes` exists
+### Why `camp` exists
 
 In many agentic coding systems, the “worker” process is not a Rust program.
 It is often:
@@ -497,56 +497,56 @@ Those systems are excellent at:
 
 They are usually **not** interested in importing Rust crates directly.
 
-So `mes` gives you a text-first interface over the same discovery engine.
+So `camp` gives you a text-first interface over the same discovery engine.
 
 ### Main commands
 
-- `mes init`
-- `mes up`
-- `mes announce`
-- `mes list`
-- `mes who`
-- `mes get`
-- `mes watch`
-- `mes serve`
-- `mes completions`
+- `camp init`
+- `camp up`
+- `camp announce`
+- `camp list`
+- `camp who`
+- `camp get`
+- `camp watch`
+- `camp serve`
+- `camp completions`
 
-### Easiest workflow: `mes init` then `mes up`
+### Easiest workflow: `camp init` then `camp up`
 
 If you want the lowest-friction setup for humans and AI agents, start with:
 
 ```bash
-mes init
-mes up
+camp init
+camp up
 ```
 
-`mes init` will:
+`camp init` will:
 
-- create a local `.mes.toml` config,
+- create a local `.camp.toml` config,
 - infer a sensible project / branch / agent id,
-- and inject a `mes` usage block into `AGENTS.md` so repository-aware agents know exactly how to use the mesh in this project.
+- and inject a `camp` usage block into `AGENTS.md` so repository-aware agents know exactly how to use the mesh in this project.
 
 After that, the common commands become very short:
 
 ```bash
-mes up
-mes who --config .mes.toml --project zero-conf-mesh
-mes watch --config .mes.toml --write-state /tmp/zero-conf-mesh-mes-state.json
-mes serve --config .mes.toml --bind 127.0.0.1:9999
+camp up
+camp who --config .camp.toml --project coding_agent_mesh_presence
+camp watch --config .camp.toml --write-state /tmp/coding_agent_mesh_presence-camp-state.json
+camp serve --config .camp.toml --bind 127.0.0.1:9999
 ```
 
-### `mes init`
+### `camp init`
 
-Bootstrap a repository-local `mes` config and agent guidance:
+Bootstrap a repository-local `camp` config and agent guidance:
 
 ```bash
-mes init
+camp init
 ```
 
 You can override any inferred defaults if you want:
 
 ```bash
-mes init \
+camp init \
   --id coder-01 \
   --role reviewer \
   --project alpha \
@@ -554,26 +554,26 @@ mes init \
   --port 8080
 ```
 
-### `mes up`
+### `camp up`
 
-Bring the local agent online from `.mes.toml`:
+Bring the local agent online from `.camp.toml`:
 
 ```bash
-mes up
+camp up
 ```
 
 Or point at an explicit config path:
 
 ```bash
-mes up --config .mes.toml
+camp up --config .camp.toml
 ```
 
-### `mes announce`
+### `camp announce`
 
 Bring an agent online on the LAN and keep it announced until interrupted without using a config file:
 
 ```bash
-mes announce \
+camp announce \
   --id coder-01 \
   --role rust-dev \
   --project alpha \
@@ -586,7 +586,7 @@ mes announce \
 You can also emit the startup snapshot as JSON:
 
 ```bash
-mes announce \
+camp announce \
   --id coder-01 \
   --role rust-dev \
   --project alpha \
@@ -595,23 +595,23 @@ mes announce \
   --json
 ```
 
-### `mes list`
+### `camp list`
 
 Discover peers without advertising the CLI process itself and print JSON:
 
 ```bash
-mes list --role reviewer
-mes list --project alpha --capability review
-mes list --metadata capability=planning
-mes list --metadata-regex capability='plan.*'
-mes list --config .mes.toml --project zero-conf-mesh
+camp list --role reviewer
+camp list --project alpha --capability review
+camp list --metadata capability=planning
+camp list --metadata-regex capability='plan.*'
+camp list --config .camp.toml --project coding_agent_mesh_presence
 ```
 
-`mes who` is an alias for the same lookup flow, intended to feel more natural in agent prompts:
+`camp who` is an alias for the same lookup flow, intended to feel more natural in agent prompts:
 
 ```bash
-mes who --role reviewer --project alpha
-mes who --config .mes.toml --project zero-conf-mesh --role reviewer
+camp who --role reviewer --project alpha
+camp who --config .camp.toml --project coding_agent_mesh_presence --role reviewer
 ```
 
 Example output:
@@ -640,39 +640,39 @@ Example output:
 ]
 ```
 
-### `mes get`
+### `camp get`
 
 Resolve a single agent by id:
 
 ```bash
-mes get qa-01
+camp get qa-01
 ```
 
-### `mes watch`
+### `camp watch`
 
 Watch the mesh as newline-delimited JSON:
 
 ```bash
-mes watch
-mes watch --config .mes.toml
+camp watch
+camp watch --config .camp.toml
 ```
 
 You can also keep a continuously refreshed state file for very simple agents:
 
 ```bash
-mes watch --write-state /tmp/agent_mesh_state.json
+camp watch --write-state /tmp/agent_mesh_state.json
 ```
 
 And you can persist the event stream itself as JSONL:
 
 ```bash
-mes watch --write-events /tmp/agent_mesh_events.jsonl
+camp watch --write-events /tmp/agent_mesh_events.jsonl
 ```
 
 Or trigger a shell command on every snapshot/event:
 
 ```bash
-mes watch --exec 'python3 /path/to/hook.py'
+camp watch --exec 'python3 /path/to/hook.py'
 ```
 
 This is useful for tmux panes, local supervisors, and agent loops that want to react to:
@@ -693,34 +693,34 @@ instead of keeping a long-running JSON event parser in memory.
 For `--exec`, each invocation receives:
 
 - one JSON document on `stdin`
-- `MES_KIND` in the environment (`snapshot`, `joined`, `updated`, `left`)
-- `MES_EVENT_JSON` in the environment with the same serialized payload
+- `CAMP_KIND` in the environment (`snapshot`, `joined`, `updated`, `left`)
+- `CAMP_EVENT_JSON` in the environment with the same serialized payload
 
 That means a hook can be as simple as:
 
 ```bash
-mes watch --exec 'jq -r .kind >> /tmp/mes-kinds.log'
+camp watch --exec 'jq -r .kind >> /tmp/camp-kinds.log'
 ```
 
-### `mes completions`
+### `camp completions`
 
 Generate shell completions:
 
 ```bash
-mes completions bash
-mes completions zsh
-mes completions fish
+camp completions bash
+camp completions zsh
+camp completions fish
 ```
 
 This is especially handy if humans and agents share the same shell environment.
 
-### `mes serve`
+### `camp serve`
 
 If you have Python/TypeScript agents that prefer HTTP over shell parsing, you can start a local REST bridge:
 
 ```bash
-mes serve --bind 127.0.0.1:9999
-mes serve --config .mes.toml --bind 127.0.0.1:9999
+camp serve --bind 127.0.0.1:9999
+camp serve --config .camp.toml --bind 127.0.0.1:9999
 ```
 
 Current endpoints:
@@ -741,7 +741,7 @@ curl -N http://127.0.0.1:9999/events
 
 The `/events` endpoint emits a JSON SSE stream with an initial `snapshot` event followed by `joined`, `updated`, and `left` events as the mesh changes.
 
-Like the other query-oriented commands, `mes serve` runs on top of a discovery-only observer so the bridge itself does not pollute the mesh registry.
+Like the other query-oriented commands, `camp serve` runs on top of a discovery-only observer so the bridge itself does not pollute the mesh registry.
 
 ### Shared-secret support in the CLI
 
@@ -754,7 +754,7 @@ The CLI exposes the same auth controls as the library:
 So you can do things like:
 
 ```bash
-mes list \
+camp list \
   --shared-secret mesh-secret-v2 \
   --shared-secret-accept mesh-secret-v1
 ```
@@ -771,15 +771,15 @@ The CLI also exposes interface policy flags:
 Examples:
 
 ```bash
-mes list --enable-interface loopback-v4
-mes announce --id coder-01 --role rust-dev --project alpha --branch main --port 8080 --disable-interface ipv6
-mes list --enable-interface name:en0
-mes list --enable-interface addr:192.168.1.10
+camp list --enable-interface loopback-v4
+camp announce --id coder-01 --role rust-dev --project alpha --branch main --port 8080 --disable-interface ipv6
+camp list --enable-interface name:en0
+camp list --enable-interface addr:192.168.1.10
 ```
 
 ### Important behavior
 
-`mes list`, `mes get`, and `mes watch` run in **discovery-only mode**:
+`camp list`, `camp get`, and `camp watch` run in **discovery-only mode**:
 
 - they browse the mesh,
 - they do **not** advertise themselves,
@@ -789,7 +789,7 @@ That keeps query-oriented agent commands from polluting the LAN registry.
 
 ### Banner / ASCII effect
 
-`mes` prints a large colorful ASCII banner at startup.
+`camp` prints a large colorful ASCII banner at startup.
 
 Important detail:
 
@@ -951,7 +951,7 @@ For richer presence data, the crate now treats `capabilities` as a first-class t
 That means you can write things like:
 
 ```rust,no_run
-# use zero_conf_mesh::ZeroConfMesh;
+# use coding_agent_mesh_presence::ZeroConfMesh;
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mesh = ZeroConfMesh::builder()
@@ -992,7 +992,7 @@ You can enable it in two modes:
 Example:
 
 ```rust,no_run
-# use zero_conf_mesh::{SharedSecretMode, ZeroConfMesh};
+# use coding_agent_mesh_presence::{SharedSecretMode, ZeroConfMesh};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mesh = ZeroConfMesh::builder()
@@ -1029,7 +1029,7 @@ That means a node can:
 Example:
 
 ```rust,no_run
-# use zero_conf_mesh::{SharedSecretMode, ZeroConfMesh};
+# use coding_agent_mesh_presence::{SharedSecretMode, ZeroConfMesh};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mesh = ZeroConfMesh::builder()
@@ -1058,7 +1058,7 @@ This gives you a practical transition window for authenticated deployments on a 
 If you need tighter NIC selection, the builder can now apply include/exclude rules to the embedded `mdns-sd` daemon:
 
 ```rust,no_run
-# use zero_conf_mesh::{NetworkInterface, ZeroConfMesh};
+# use coding_agent_mesh_presence::{NetworkInterface, ZeroConfMesh};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 let mesh = ZeroConfMesh::builder()

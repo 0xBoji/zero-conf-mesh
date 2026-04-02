@@ -8,29 +8,29 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 ### Added
 
-- `mes init` to generate a repo-local `.mes.toml` file and inject project-specific `mes` usage guidance into `AGENTS.md`.
-- `mes up` to announce a local agent directly from the generated config.
-- Optional `--config` support for observer-style CLI commands so `mes who`, `mes watch`, and `mes serve` can reuse the initialized discovery profile.
+- `camp init` to generate a repo-local `.camp.toml` file and inject project-specific `camp` usage guidance into `AGENTS.md`.
+- `camp up` to announce a local agent directly from the generated config.
+- Optional `--config` support for observer-style CLI commands so `camp who`, `camp watch`, and `camp serve` can reuse the initialized discovery profile.
 
 ### Changed
 
-- `.mes.toml` and `mes.toml` are now ignored by git so machine-local mesh identities stay local.
+- `.camp.toml` and `camp.toml` are now ignored by git so machine-local mesh identities stay local.
 
 ## [0.1.4](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.3...v0.1.4) - 2026-04-02
 
 ### Added
 
-- stream live events from mes serve
-- add local rest bridge to mes
-- add exec hooks to mes watch
+- stream live events from camp serve
+- add local rest bridge to camp
+- add exec hooks to camp watch
 
 ## [0.1.3](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.2...v0.1.3) - 2026-04-02
 
 ### Added
 
-- expand mes agent workflow commands
-- add file-based state export to mes
-- add mes cli for shell-driven discovery
+- expand camp agent workflow commands
+- add file-based state export to camp
+- add camp cli for shell-driven discovery
 - support shared secret rotation
 - add authenticated LAN discovery controls
 
@@ -40,13 +40,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Explicit interface include/exclude controls for the embedded `mdns-sd` daemon.
 - Optional shared-secret signing and peer verification modes for authenticated LAN discovery.
 - Shared-secret rotation support so new nodes can verify peers signed with previous secrets during rollout.
-- First-party `mes` CLI with JSON-friendly `announce`, `list`, `get`, and `watch` commands for shell/LLM-driven agents.
+- First-party `camp` CLI with JSON-friendly `announce`, `list`, `get`, and `watch` commands for shell/LLM-driven agents.
 - Discovery-only runtime mode so observer/query processes do not announce themselves on the LAN.
-- `mes watch --write-state ...` support for file-based JSON snapshots aimed at simple shell/LLM agents.
-- `mes who` alias, `mes watch --write-events ...` JSONL logging, and `mes completions ...` generation.
-- `mes watch --exec ...` hook execution with JSON piped to stdin for reactive agent workflows.
-- `mes serve` local REST bridge for Python/TypeScript agent runtimes.
-- `mes serve /events` SSE stream for live mesh snapshots and lifecycle updates.
+- `camp watch --write-state ...` support for file-based JSON snapshots aimed at simple shell/LLM agents.
+- `camp who` alias, `camp watch --write-events ...` JSONL logging, and `camp completions ...` generation.
+- `camp watch --exec ...` hook execution with JSON piped to stdin for reactive agent workflows.
+- `camp serve` local REST bridge for Python/TypeScript agent runtimes.
+- `camp serve /events` SSE stream for live mesh snapshots and lifecycle updates.
 
 ### Changed
 - `capabilities` is now treated as a canonical first-class presence field instead of only ad-hoc metadata.
@@ -85,7 +85,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [0.1.0] - 2026-04-02
 
 ### Added
-- Initial `zero-conf-mesh` crate scaffold and spec-first project structure.
+- Initial `coding_agent_mesh_presence` crate scaffold and spec-first project structure.
 - Async `ZeroConfMesh` runtime with builder-driven startup.
 - Local mDNS/DNS-SD advertisement using `mdns-sd`.
 - Background LAN peer discovery and resolved-service parsing.

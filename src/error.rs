@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use thiserror::Error;
 
-/// Errors produced by `zero-conf-mesh`.
+/// Errors produced by `coding_agent_mesh_presence`.
 #[derive(Debug, Error)]
 pub enum ZeroConfError {
     /// A required text field was empty after trimming whitespace.

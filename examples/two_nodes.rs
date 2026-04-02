@@ -1,4 +1,4 @@
-//! Runnable two-node `zero-conf-mesh` demo.
+//! Runnable two-node `coding_agent_mesh_presence` demo.
 //!
 //! Run with:
 //! - `cargo run --example two_nodes`
@@ -10,9 +10,9 @@ use std::{
     time::Duration,
 };
 
+use coding_agent_mesh_presence::{AgentEvent, AgentStatus, DEFAULT_MDNS_PORT, ZeroConfMesh};
 use tokio::time;
 use tracing_subscriber::{EnvFilter, fmt};
-use zero_conf_mesh::{AgentEvent, AgentStatus, DEFAULT_MDNS_PORT, ZeroConfMesh};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -106,7 +106,7 @@ fn spawn_event_logger(
     })
 }
 
-fn ids(agents: &[zero_conf_mesh::AgentInfo]) -> Vec<&str> {
+fn ids(agents: &[coding_agent_mesh_presence::AgentInfo]) -> Vec<&str> {
     agents.iter().map(|agent| agent.id()).collect()
 }
 

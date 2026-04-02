@@ -6,9 +6,11 @@ use std::{
     time::Duration,
 };
 
+use coding_agent_mesh_presence::{
+    AgentStatus, DEFAULT_SERVICE_TYPE, SharedSecretMode, ZeroConfMesh,
+};
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 use tokio::time;
-use zero_conf_mesh::{AgentStatus, DEFAULT_SERVICE_TYPE, SharedSecretMode, ZeroConfMesh};
 
 #[tokio::test]
 async fn mesh_should_propagate_status_updates_to_remote_peers() -> Result<(), Box<dyn Error>> {
@@ -125,7 +127,7 @@ async fn mesh_should_propagate_capabilities_and_support_advanced_queries()
         .ttl(Duration::from_secs(2))
         .metadata("capability", "planning")
         .capabilities(["planning", "review"])
-        .enable_interface(zero_conf_mesh::NetworkInterface::LoopbackV4)
+        .enable_interface(coding_agent_mesh_presence::NetworkInterface::LoopbackV4)
         .build()
         .await?;
     let mesh_b = mesh("agent-b", "alpha", "main", 8082, mdns_port).await?;
@@ -415,7 +417,7 @@ async fn mesh(
     branch: &str,
     port: u16,
     mdns_port: u16,
-) -> Result<ZeroConfMesh, zero_conf_mesh::ZeroConfError> {
+) -> Result<ZeroConfMesh, coding_agent_mesh_presence::ZeroConfError> {
     ZeroConfMesh::builder()
         .agent_id(agent_id)
         .role("worker")
@@ -438,7 +440,7 @@ async fn wait_for_agent_with_status(
     mesh: &ZeroConfMesh,
     agent_id: &str,
     status: AgentStatus,
-) -> Result<zero_conf_mesh::AgentInfo, Box<dyn Error>> {
+) -> Result<coding_agent_mesh_presence::AgentInfo, Box<dyn Error>> {
     wait_for_agent_matching(mesh, agent_id, |agent| agent.status() == status).await
 }
 
@@ -446,9 +448,9 @@ async fn wait_for_agent_matching<F>(
     mesh: &ZeroConfMesh,
     agent_id: &str,
     predicate: F,
-) -> Result<zero_conf_mesh::AgentInfo, Box<dyn Error>>
+) -> Result<coding_agent_mesh_presence::AgentInfo, Box<dyn Error>>
 where
-    F: Fn(&zero_conf_mesh::AgentInfo) -> bool,
+    F: Fn(&coding_agent_mesh_presence::AgentInfo) -> bool,
 {
     let deadline = time::Instant::now() + Duration::from_secs(5);
     while time::Instant::now() < deadline {
@@ -497,7 +499,7 @@ async fn wait_for_agent_to_remain_absent(
     Ok(())
 }
 
-fn ids(agents: &[zero_conf_mesh::AgentInfo]) -> Vec<&str> {
+fn ids(agents: &[coding_agent_mesh_presence::AgentInfo]) -> Vec<&str> {
     agents.iter().map(|agent| agent.id()).collect()
 }
 

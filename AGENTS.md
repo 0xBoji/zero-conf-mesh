@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Project mission
-Build `zero-conf-mesh`, a Rust crate for zero-configuration LAN service discovery for multi-agent systems using mDNS/DNS-SD.
+Build `coding_agent_mesh_presence`, a Rust crate for zero-configuration LAN service discovery for multi-agent systems using mDNS/DNS-SD.
 
 ## Current repository state
 This repository is now **scaffolded** and follows a **spec-first** approach.
@@ -74,20 +74,20 @@ A change is in good shape when it:
 - is lint-clean,
 - and has appropriate tests for the level of change.
 
-<!-- MES:START -->
-## mes agent workflow
+<!-- CAMP:START -->
+## camp agent workflow
 
-This repository is configured to use `mes` for local LAN agent discovery.
+This repository is configured to use `camp` for local LAN agent discovery.
 
-If `.mes.toml` is missing on this machine, run `mes init --force` before using the commands below.
+If `.camp.toml` is missing on this machine, run `camp init --force` before using the commands below.
 
 Recommended commands for AI agents in this repo:
-- bring this repo's agent online: `mes up`
-- list peers for this project: `mes who --config .mes.toml --project zero-conf-mesh`
-- find a reviewer quickly: `mes who --config .mes.toml --project zero-conf-mesh --role reviewer`
-- mirror live mesh state to a file: `mes watch --config .mes.toml --write-state /tmp/zero-conf-mesh-mes-state.json`
-- start the local HTTP + SSE bridge: `mes serve --config .mes.toml --bind 127.0.0.1:9999`
+- bring this repo's agent online: `camp up`
+- list peers for this project: `camp who --config .camp.toml --project coding_agent_mesh_presence`
+- find a reviewer quickly: `camp who --config .camp.toml --project coding_agent_mesh_presence --role reviewer`
+- mirror live mesh state to a file: `camp watch --config .camp.toml --write-state /tmp/coding-agent-mesh-presence-camp-state.json`
+- start the local HTTP + SSE bridge: `camp serve --config .camp.toml --bind 127.0.0.1:9999`
 
 The generated config already includes this repo's defaults for project, branch, ports, and discovery settings.
-Prefer reusing a single long-running `mes up` process instead of starting multiple announcers for the same machine.
-<!-- MES:END -->
+Prefer reusing a single long-running `camp up` process instead of starting multiple announcers for the same machine.
+<!-- CAMP:END -->

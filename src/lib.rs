@@ -2,7 +2,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![forbid(unsafe_code)]
 
-//! `zero-conf-mesh` provides the building blocks for zero-configuration agent
+//! `coding_agent_mesh_presence` provides the building blocks for zero-configuration agent
 //! discovery on a local network.
 //!
 //! The crate is being built incrementally. The current slice provides:
@@ -15,7 +15,7 @@
 //!
 //! # Example
 //! ```no_run
-//! use zero_conf_mesh::{AgentStatus, ZeroConfMesh};
+//! use coding_agent_mesh_presence::{AgentStatus, ZeroConfMesh};
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {

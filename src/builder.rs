@@ -24,7 +24,7 @@ struct SharedSecretBuilderConfig {
 ///
 /// # Example
 /// ```no_run
-/// use zero_conf_mesh::ZeroConfMesh;
+/// use coding_agent_mesh_presence::ZeroConfMesh;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {

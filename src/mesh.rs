@@ -26,7 +26,7 @@ use crate::{
 ///
 /// # Example
 /// ```no_run
-/// use zero_conf_mesh::{AgentStatus, ZeroConfMesh};
+/// use coding_agent_mesh_presence::{AgentStatus, ZeroConfMesh};
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -279,7 +279,7 @@ impl ZeroConfMesh {
     ///
     /// # Example
     /// ```no_run
-    /// use zero_conf_mesh::{AgentEvent, ZeroConfMesh};
+    /// use coding_agent_mesh_presence::{AgentEvent, ZeroConfMesh};
     ///
     /// # #[tokio::main]
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
