@@ -219,6 +219,18 @@ cargo install coding_agent_mesh_presence
 
 That installs the library dependency for Rust projects and the `camp` CLI binary for shell usage.
 
+If you want a curl/bash installer for the CLI instead:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/0xBoji/coding_agent_mesh_presence/main/scripts/install.sh)
+```
+
+And if you want to install directly from GitHub before the crates.io package is available:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/0xBoji/coding_agent_mesh_presence/main/scripts/install.sh) --git
+```
+
 ---
 
 ## The mental model
@@ -515,6 +527,12 @@ If you want the CLI from crates.io after the renamed package is published:
 
 ```bash
 cargo install coding_agent_mesh_presence
+```
+
+Or with curl/bash:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/0xBoji/coding_agent_mesh_presence/main/scripts/install.sh)
 ```
 
 ### Main commands
