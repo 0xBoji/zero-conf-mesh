@@ -501,6 +501,8 @@ So `mes` gives you a text-first interface over the same discovery engine.
 
 ### Main commands
 
+- `mes init`
+- `mes up`
 - `mes announce`
 - `mes list`
 - `mes who`
@@ -509,9 +511,66 @@ So `mes` gives you a text-first interface over the same discovery engine.
 - `mes serve`
 - `mes completions`
 
+### Easiest workflow: `mes init` then `mes up`
+
+If you want the lowest-friction setup for humans and AI agents, start with:
+
+```bash
+mes init
+mes up
+```
+
+`mes init` will:
+
+- create a local `.mes.toml` config,
+- infer a sensible project / branch / agent id,
+- and inject a `mes` usage block into `AGENTS.md` so repository-aware agents know exactly how to use the mesh in this project.
+
+After that, the common commands become very short:
+
+```bash
+mes up
+mes who --config .mes.toml --project zero-conf-mesh
+mes watch --config .mes.toml --write-state /tmp/zero-conf-mesh-mes-state.json
+mes serve --config .mes.toml --bind 127.0.0.1:9999
+```
+
+### `mes init`
+
+Bootstrap a repository-local `mes` config and agent guidance:
+
+```bash
+mes init
+```
+
+You can override any inferred defaults if you want:
+
+```bash
+mes init \
+  --id coder-01 \
+  --role reviewer \
+  --project alpha \
+  --branch main \
+  --port 8080
+```
+
+### `mes up`
+
+Bring the local agent online from `.mes.toml`:
+
+```bash
+mes up
+```
+
+Or point at an explicit config path:
+
+```bash
+mes up --config .mes.toml
+```
+
 ### `mes announce`
 
-Bring an agent online on the LAN and keep it announced until interrupted:
+Bring an agent online on the LAN and keep it announced until interrupted without using a config file:
 
 ```bash
 mes announce \
@@ -545,12 +604,14 @@ mes list --role reviewer
 mes list --project alpha --capability review
 mes list --metadata capability=planning
 mes list --metadata-regex capability='plan.*'
+mes list --config .mes.toml --project zero-conf-mesh
 ```
 
 `mes who` is an alias for the same lookup flow, intended to feel more natural in agent prompts:
 
 ```bash
 mes who --role reviewer --project alpha
+mes who --config .mes.toml --project zero-conf-mesh --role reviewer
 ```
 
 Example output:
@@ -593,6 +654,7 @@ Watch the mesh as newline-delimited JSON:
 
 ```bash
 mes watch
+mes watch --config .mes.toml
 ```
 
 You can also keep a continuously refreshed state file for very simple agents:
@@ -658,6 +720,7 @@ If you have Python/TypeScript agents that prefer HTTP over shell parsing, you ca
 
 ```bash
 mes serve --bind 127.0.0.1:9999
+mes serve --config .mes.toml --bind 127.0.0.1:9999
 ```
 
 Current endpoints:

@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+
+- `mes init` to generate a repo-local `.mes.toml` file and inject project-specific `mes` usage guidance into `AGENTS.md`.
+- `mes up` to announce a local agent directly from the generated config.
+- Optional `--config` support for observer-style CLI commands so `mes who`, `mes watch`, and `mes serve` can reuse the initialized discovery profile.
+
+### Changed
+
+- `.mes.toml` and `mes.toml` are now ignored by git so machine-local mesh identities stay local.
 
 ## [0.1.4](https://github.com/0xBoji/zero-conf-mesh/compare/v0.1.3...v0.1.4) - 2026-04-02
 

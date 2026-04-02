@@ -36,6 +36,16 @@ use zero_conf_mesh::{
     SharedSecretMode, ZeroConfMesh,
 };
 
+const DEFAULT_CONFIG_FILE_NAME: &str = ".mes.toml";
+const DEFAULT_AGENT_ROLE: &str = "agent";
+const DEFAULT_AGENT_PROJECT: &str = "default";
+const DEFAULT_AGENT_BRANCH: &str = "main";
+const DEFAULT_AGENT_PORT: u16 = 7000;
+const DEFAULT_HEARTBEAT_MS: u64 = 30_000;
+const DEFAULT_TTL_MS: u64 = 120_000;
+const AGENTS_GUIDANCE_START: &str = "<!-- MES:START -->";
+const AGENTS_GUIDANCE_END: &str = "<!-- MES:END -->";
+
 #[derive(Parser, Debug)]
 #[command(name = "mes", version, about = "Zero-conf agent discovery CLI", long_about = None)]
 struct Cli {
@@ -45,6 +55,10 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Create a local mes config and inject project usage guidance into AGENTS.md.
+    Init(InitCommand),
+    /// Announce the local agent described by the mes config file.
+    Up(UpCommand),
     /// Announce a local agent on the LAN and keep it online until interrupted.
     Announce(AnnounceCommand),
     /// Discover peers on the LAN and print the current registry as JSON.
@@ -60,9 +74,11 @@ enum Command {
     Completions(CompletionsCommand),
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum SharedSecretModeArg {
     SignOnly,
+    #[default]
     SignAndVerify,
 }
 
@@ -77,6 +93,9 @@ impl From<SharedSecretModeArg> for SharedSecretMode {
 
 #[derive(Args, Debug, Clone)]
 struct DiscoveryOptions {
+    /// Read discovery defaults from a mes TOML config file.
+    #[arg(long)]
+    config: Option<PathBuf>,
     /// Service type to browse.
     #[arg(long, default_value = zero_conf_mesh::DEFAULT_SERVICE_TYPE)]
     service_type: String,
@@ -101,6 +120,83 @@ struct DiscoveryOptions {
     /// Exclude matching interfaces for the embedded mDNS daemon.
     #[arg(long = "disable-interface")]
     disable_interface: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+struct InitCommand {
+    /// Output mes config path.
+    #[arg(long, default_value = DEFAULT_CONFIG_FILE_NAME)]
+    config: PathBuf,
+    /// AGENTS.md file that should receive mes usage guidance.
+    #[arg(long, default_value = "AGENTS.md")]
+    agents_file: PathBuf,
+    /// Overwrite an existing mes config file.
+    #[arg(long)]
+    force: bool,
+    /// Local agent id. Defaults to a host/user-derived slug.
+    #[arg(long)]
+    id: Option<String>,
+    /// Local role.
+    #[arg(long)]
+    role: Option<String>,
+    /// Project namespace.
+    #[arg(long)]
+    project: Option<String>,
+    /// Branch/workstream identifier.
+    #[arg(long)]
+    branch: Option<String>,
+    /// Advertised TCP service port.
+    #[arg(long)]
+    port: Option<u16>,
+    /// Initial agent status.
+    #[arg(long, default_value = "idle", value_parser = parse_status)]
+    status: AgentStatus,
+    /// Additional typed capability.
+    #[arg(long = "capability")]
+    capabilities: Vec<String>,
+    /// Extra metadata entry in KEY=VALUE form.
+    #[arg(long = "metadata", value_parser = parse_key_value)]
+    metadata: Vec<(String, String)>,
+    /// Service type to announce.
+    #[arg(long, default_value = zero_conf_mesh::DEFAULT_SERVICE_TYPE)]
+    service_type: String,
+    /// UDP port used by the embedded mDNS daemon.
+    #[arg(long, default_value_t = zero_conf_mesh::DEFAULT_MDNS_PORT)]
+    mdns_port: u16,
+    /// Heartbeat interval in milliseconds.
+    #[arg(long, default_value_t = DEFAULT_HEARTBEAT_MS)]
+    heartbeat_ms: u64,
+    /// TTL in milliseconds.
+    #[arg(long, default_value_t = DEFAULT_TTL_MS)]
+    ttl_ms: u64,
+    /// Shared secret used for signing / verification.
+    #[arg(long)]
+    shared_secret: Option<String>,
+    /// Additional accepted secrets during rotation.
+    #[arg(long = "shared-secret-accept")]
+    shared_secret_accept: Vec<String>,
+    /// Shared-secret mode.
+    #[arg(long, value_enum, default_value_t = SharedSecretModeArg::SignAndVerify)]
+    shared_secret_mode: SharedSecretModeArg,
+    /// Include only matching interfaces for the embedded mDNS daemon.
+    #[arg(long = "enable-interface")]
+    enable_interface: Vec<String>,
+    /// Exclude matching interfaces for the embedded mDNS daemon.
+    #[arg(long = "disable-interface")]
+    disable_interface: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+struct UpCommand {
+    /// mes TOML config to announce from.
+    #[arg(long, default_value = DEFAULT_CONFIG_FILE_NAME)]
+    config: PathBuf,
+    /// Optional maximum lifetime in seconds; otherwise waits for Ctrl-C.
+    #[arg(long)]
+    duration_secs: Option<u64>,
+    /// Print the local announcement as JSON once startup completes.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -283,12 +379,109 @@ struct ServeState {
     mesh: Arc<ZeroConfMesh>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MesConfigFile {
+    agent: MesAgentConfig,
+    discovery: MesDiscoveryConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MesAgentConfig {
+    id: String,
+    role: String,
+    project: String,
+    branch: String,
+    port: u16,
+    status: AgentStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MesDiscoveryConfig {
+    service_type: String,
+    mdns_port: u16,
+    heartbeat_ms: u64,
+    ttl_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shared_secret: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    shared_secret_accept: Vec<String>,
+    #[serde(default)]
+    shared_secret_mode: SharedSecretModeArg,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    enable_interface: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    disable_interface: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AnnounceSettings {
+    id: String,
+    role: String,
+    project: String,
+    branch: String,
+    port: u16,
+    status: AgentStatus,
+    capabilities: Vec<String>,
+    metadata: Vec<(String, String)>,
+    service_type: String,
+    mdns_port: u16,
+    heartbeat_ms: u64,
+    ttl_ms: u64,
+    shared_secret: Option<String>,
+    shared_secret_accept: Vec<String>,
+    shared_secret_mode: SharedSecretMode,
+    enable_interface: Vec<String>,
+    disable_interface: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedDiscoveryOptions {
+    service_type: String,
+    mdns_port: u16,
+    shared_secret: Option<String>,
+    shared_secret_accept: Vec<String>,
+    shared_secret_mode: SharedSecretMode,
+    enable_interface: Vec<String>,
+    disable_interface: Vec<String>,
+}
+
+impl From<MesConfigFile> for AnnounceSettings {
+    fn from(value: MesConfigFile) -> Self {
+        let MesConfigFile { agent, discovery } = value;
+        Self {
+            id: agent.id,
+            role: agent.role,
+            project: agent.project,
+            branch: agent.branch,
+            port: agent.port,
+            status: agent.status,
+            capabilities: agent.capabilities,
+            metadata: agent.metadata.into_iter().collect(),
+            service_type: discovery.service_type,
+            mdns_port: discovery.mdns_port,
+            heartbeat_ms: discovery.heartbeat_ms,
+            ttl_ms: discovery.ttl_ms,
+            shared_secret: discovery.shared_secret,
+            shared_secret_accept: discovery.shared_secret_accept,
+            shared_secret_mode: discovery.shared_secret_mode.into(),
+            enable_interface: discovery.enable_interface,
+            disable_interface: discovery.disable_interface,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     print_banner();
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Init(command) => run_init(command)?,
+        Command::Up(command) => run_up(command).await?,
         Command::Announce(command) => run_announce(command).await?,
         Command::List(command) => run_list(command).await?,
         Command::Get(command) => run_get(command).await?,
@@ -300,56 +493,96 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn run_announce(command: AnnounceCommand) -> Result<(), Box<dyn Error>> {
-    let mut builder = ZeroConfMesh::builder()
-        .agent_id(command.id)
-        .role(command.role)
-        .project(command.project)
-        .branch(command.branch)
-        .port(command.port)
-        .mdns_port(command.mdns_port)
-        .service_type(command.service_type)
-        .status(command.status)
-        .heartbeat_interval(Duration::from_millis(command.heartbeat_ms))
-        .ttl(Duration::from_millis(command.ttl_ms))
-        .capabilities(command.capabilities);
+fn run_init(command: InitCommand) -> Result<(), Box<dyn Error>> {
+    let config_path = command.config;
+    if config_path.exists() && !command.force {
+        return Err(format!(
+            "mes config already exists at {}; rerun with --force to overwrite",
+            config_path.display()
+        )
+        .into());
+    }
 
-    builder = apply_metadata(builder, command.metadata);
-    builder = apply_shared_secret(
-        builder,
-        command.shared_secret,
-        command.shared_secret_accept,
-        command.shared_secret_mode.into(),
-    );
-    builder = apply_interfaces(builder, command.enable_interface, command.disable_interface)?;
+    let project = command.project.unwrap_or_else(infer_default_project);
+    let branch = command.branch.unwrap_or_else(infer_default_branch);
+    let agent_id = command
+        .id
+        .unwrap_or_else(|| infer_default_agent_id(&project, &branch));
 
-    let mesh = builder.build().await?;
+    let config = MesConfigFile {
+        agent: MesAgentConfig {
+            id: agent_id,
+            role: command
+                .role
+                .unwrap_or_else(|| DEFAULT_AGENT_ROLE.to_owned()),
+            project,
+            branch,
+            port: command.port.unwrap_or(DEFAULT_AGENT_PORT),
+            status: command.status,
+            capabilities: command.capabilities,
+            metadata: command.metadata.into_iter().collect(),
+        },
+        discovery: MesDiscoveryConfig {
+            service_type: command.service_type,
+            mdns_port: command.mdns_port,
+            heartbeat_ms: command.heartbeat_ms,
+            ttl_ms: command.ttl_ms,
+            shared_secret: command.shared_secret,
+            shared_secret_accept: command.shared_secret_accept,
+            shared_secret_mode: command.shared_secret_mode,
+            enable_interface: command.enable_interface,
+            disable_interface: command.disable_interface,
+        },
+    };
 
+    write_mes_config(&config_path, &config)?;
+    upsert_agents_guidance(&command.agents_file, &config_path, &config)?;
+
+    eprintln!("mes: wrote {}", config_path.display());
+    eprintln!("mes: updated {}", command.agents_file.display());
+    eprintln!("mes: next steps");
+    eprintln!("  1. mes up");
     eprintln!(
-        "mes: announcing {} on {} ({})",
-        mesh.local_agent_id(),
-        mesh.config().project(),
-        mesh.config().branch()
+        "  2. mes who --config {} --project {}",
+        config_path.display(),
+        config.agent.project
+    );
+    eprintln!(
+        "  3. mes watch --config {} --write-state /tmp/{}-mes-state.json",
+        config_path.display(),
+        slugify(&config.agent.project)
     );
 
-    if command.json {
-        print_json_pretty(&to_agent_record(
-            &mesh
-                .registry()
-                .get(mesh.local_agent_id())
-                .await
-                .ok_or("local agent missing from registry")?,
-        ))?;
-    }
-
-    if let Some(duration_secs) = command.duration_secs {
-        time::sleep(Duration::from_secs(duration_secs)).await;
-    } else {
-        tokio::signal::ctrl_c().await?;
-    }
-
-    mesh.shutdown().await?;
     Ok(())
+}
+
+async fn run_up(command: UpCommand) -> Result<(), Box<dyn Error>> {
+    let config = read_mes_config(&command.config)?;
+    let settings = AnnounceSettings::from(config);
+    run_announce_with_settings(settings, command.duration_secs, command.json).await
+}
+
+async fn run_announce(command: AnnounceCommand) -> Result<(), Box<dyn Error>> {
+    let settings = AnnounceSettings {
+        id: command.id,
+        role: command.role,
+        project: command.project,
+        branch: command.branch,
+        port: command.port,
+        status: command.status,
+        capabilities: command.capabilities,
+        metadata: command.metadata,
+        service_type: command.service_type,
+        mdns_port: command.mdns_port,
+        heartbeat_ms: command.heartbeat_ms,
+        ttl_ms: command.ttl_ms,
+        shared_secret: command.shared_secret,
+        shared_secret_accept: command.shared_secret_accept,
+        shared_secret_mode: command.shared_secret_mode.into(),
+        enable_interface: command.enable_interface,
+        disable_interface: command.disable_interface,
+    };
+    run_announce_with_settings(settings, command.duration_secs, command.json).await
 }
 
 async fn run_list(command: ListCommand) -> Result<(), Box<dyn Error>> {
@@ -466,28 +699,29 @@ fn run_completions(command: CompletionsCommand) -> Result<(), Box<dyn Error>> {
 }
 
 async fn build_observer(options: &DiscoveryOptions) -> Result<ZeroConfMesh, Box<dyn Error>> {
+    let resolved = resolve_discovery_options(options)?;
     let mut builder = ZeroConfMesh::builder()
         .agent_id(format!("mes-observer-{}", uuid::Uuid::new_v4()))
         .role("observer")
         .project("observer")
         .branch("watch")
         .port(ephemeral_udp_port())
-        .mdns_port(options.mdns_port)
-        .service_type(options.service_type.clone())
+        .mdns_port(resolved.mdns_port)
+        .service_type(resolved.service_type)
         .discover_only()
         .heartbeat_interval(Duration::from_millis(200))
         .ttl(Duration::from_secs(2));
 
     builder = apply_shared_secret(
         builder,
-        options.shared_secret.clone(),
-        options.shared_secret_accept.clone(),
-        options.shared_secret_mode.into(),
+        resolved.shared_secret,
+        resolved.shared_secret_accept,
+        resolved.shared_secret_mode,
     );
     builder = apply_interfaces(
         builder,
-        options.enable_interface.clone(),
-        options.disable_interface.clone(),
+        resolved.enable_interface,
+        resolved.disable_interface,
     )?;
 
     Ok(builder.build().await?)
@@ -496,6 +730,93 @@ async fn build_observer(options: &DiscoveryOptions) -> Result<ZeroConfMesh, Box<
 async fn discover_agents(mesh: &ZeroConfMesh, discover_ms: u64) -> Vec<AgentInfo> {
     time::sleep(Duration::from_millis(discover_ms)).await;
     mesh.agents().await
+}
+
+async fn run_announce_with_settings(
+    settings: AnnounceSettings,
+    duration_secs: Option<u64>,
+    json: bool,
+) -> Result<(), Box<dyn Error>> {
+    let mut builder = ZeroConfMesh::builder()
+        .agent_id(settings.id)
+        .role(settings.role)
+        .project(settings.project)
+        .branch(settings.branch)
+        .port(settings.port)
+        .mdns_port(settings.mdns_port)
+        .service_type(settings.service_type)
+        .status(settings.status)
+        .heartbeat_interval(Duration::from_millis(settings.heartbeat_ms))
+        .ttl(Duration::from_millis(settings.ttl_ms))
+        .capabilities(settings.capabilities);
+
+    builder = apply_metadata(builder, settings.metadata);
+    builder = apply_shared_secret(
+        builder,
+        settings.shared_secret,
+        settings.shared_secret_accept,
+        settings.shared_secret_mode,
+    );
+    builder = apply_interfaces(
+        builder,
+        settings.enable_interface,
+        settings.disable_interface,
+    )?;
+
+    let mesh = builder.build().await?;
+
+    eprintln!(
+        "mes: announcing {} on {} ({})",
+        mesh.local_agent_id(),
+        mesh.config().project(),
+        mesh.config().branch()
+    );
+
+    if json {
+        print_json_pretty(&to_agent_record(
+            &mesh
+                .registry()
+                .get(mesh.local_agent_id())
+                .await
+                .ok_or("local agent missing from registry")?,
+        ))?;
+    }
+
+    if let Some(duration_secs) = duration_secs {
+        time::sleep(Duration::from_secs(duration_secs)).await;
+    } else {
+        tokio::signal::ctrl_c().await?;
+    }
+
+    mesh.shutdown().await?;
+    Ok(())
+}
+
+fn resolve_discovery_options(
+    options: &DiscoveryOptions,
+) -> Result<ResolvedDiscoveryOptions, Box<dyn Error>> {
+    if let Some(path) = options.config.as_deref() {
+        let config = read_mes_config(path)?;
+        return Ok(ResolvedDiscoveryOptions {
+            service_type: config.discovery.service_type,
+            mdns_port: config.discovery.mdns_port,
+            shared_secret: config.discovery.shared_secret,
+            shared_secret_accept: config.discovery.shared_secret_accept,
+            shared_secret_mode: config.discovery.shared_secret_mode.into(),
+            enable_interface: config.discovery.enable_interface,
+            disable_interface: config.discovery.disable_interface,
+        });
+    }
+
+    Ok(ResolvedDiscoveryOptions {
+        service_type: options.service_type.clone(),
+        mdns_port: options.mdns_port,
+        shared_secret: options.shared_secret.clone(),
+        shared_secret_accept: options.shared_secret_accept.clone(),
+        shared_secret_mode: options.shared_secret_mode.into(),
+        enable_interface: options.enable_interface.clone(),
+        disable_interface: options.disable_interface.clone(),
+    })
 }
 
 fn matches_filters(agent: &AgentInfo, command: &ListCommand) -> bool {
@@ -815,6 +1136,166 @@ fn parse_network_interface(value: &str) -> Result<NetworkInterface, String> {
     }
 }
 
+fn infer_default_project() -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_AGENT_PROJECT.to_owned())
+}
+
+fn infer_default_branch() -> String {
+    try_command_stdout(&["git", "branch", "--show-current"])
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_AGENT_BRANCH.to_owned())
+}
+
+fn infer_default_agent_id(project: &str, branch: &str) -> String {
+    let user = std::env::var("USER").ok().filter(|value| !value.is_empty());
+    let host = std::env::var("HOSTNAME")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .or_else(|| try_command_stdout(&["hostname"]).filter(|value| !value.is_empty()));
+    let raw = [
+        Some("mes".to_owned()),
+        user,
+        host,
+        Some(project.to_owned()),
+        Some(branch.to_owned()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("-");
+    slugify(&raw)
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::with_capacity(value.len());
+    let mut last_dash = false;
+
+    for ch in value.chars() {
+        let normalized = ch.to_ascii_lowercase();
+        if normalized.is_ascii_alphanumeric() {
+            slug.push(normalized);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+
+    let trimmed = slug.trim_matches('-');
+    if trimmed.is_empty() {
+        "mes-agent".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+fn try_command_stdout(argv: &[&str]) -> Option<String> {
+    let (program, args) = argv.split_first()?;
+    let output = ProcessCommand::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
+}
+
+fn read_mes_config(path: &Path) -> Result<MesConfigFile, Box<dyn Error>> {
+    let contents = fs::read_to_string(path)?;
+    Ok(toml::from_str(&contents)?)
+}
+
+fn write_mes_config(path: &Path, config: &MesConfigFile) -> Result<(), Box<dyn Error>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty());
+    if let Some(parent) = parent {
+        fs::create_dir_all(parent)?;
+    }
+
+    let contents = toml::to_string_pretty(config)?;
+    fs::write(path, format!("{contents}\n"))?;
+    Ok(())
+}
+
+fn upsert_agents_guidance(
+    path: &Path,
+    config_path: &Path,
+    config: &MesConfigFile,
+) -> Result<(), Box<dyn Error>> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty());
+    if let Some(parent) = parent {
+        fs::create_dir_all(parent)?;
+    }
+
+    let guidance = render_agents_guidance(config_path, config);
+    let existing = fs::read_to_string(path).unwrap_or_default();
+    let updated = replace_marked_block(
+        &existing,
+        AGENTS_GUIDANCE_START,
+        AGENTS_GUIDANCE_END,
+        &guidance,
+    );
+    fs::write(path, updated)?;
+    Ok(())
+}
+
+fn render_agents_guidance(config_path: &Path, config: &MesConfigFile) -> String {
+    let state_file = format!("/tmp/{}-mes-state.json", slugify(&config.agent.project));
+    let config_display = config_path.display();
+    format!(
+        "{AGENTS_GUIDANCE_START}\n## mes agent workflow\n\n\
+This repository is configured to use `mes` for local LAN agent discovery.\n\n\
+If `{config_display}` is missing on this machine, run `mes init --force` before using the commands below.\n\n\
+Recommended commands for AI agents in this repo:\n\
+- bring this repo's agent online: `mes up`\n\
+- list peers for this project: `mes who --config {config_display} --project {project}`\n\
+- find a reviewer quickly: `mes who --config {config_display} --project {project} --role reviewer`\n\
+- mirror live mesh state to a file: `mes watch --config {config_display} --write-state {state_file}`\n\
+- start the local HTTP + SSE bridge: `mes serve --config {config_display} --bind 127.0.0.1:9999`\n\n\
+The generated config already includes this repo's defaults for project, branch, ports, and discovery settings.\n\
+Prefer reusing a single long-running `mes up` process instead of starting multiple announcers for the same machine.\n\
+{AGENTS_GUIDANCE_END}\n",
+        project = config.agent.project,
+    )
+}
+
+fn replace_marked_block(existing: &str, start: &str, end: &str, replacement: &str) -> String {
+    let trimmed_replacement = replacement.trim_end();
+
+    match (existing.find(start), existing.find(end)) {
+        (Some(start_idx), Some(end_idx)) if end_idx >= start_idx => {
+            let before = existing[..start_idx].trim_end();
+            let after = existing[end_idx + end.len()..].trim_start();
+            if before.is_empty() && after.is_empty() {
+                format!("{trimmed_replacement}\n")
+            } else if before.is_empty() {
+                format!("{trimmed_replacement}\n\n{after}\n")
+            } else if after.is_empty() {
+                format!("{before}\n\n{trimmed_replacement}\n")
+            } else {
+                format!("{before}\n\n{trimmed_replacement}\n\n{after}\n")
+            }
+        }
+        _ if existing.trim().is_empty() => format!("{trimmed_replacement}\n"),
+        _ => format!("{}\n\n{trimmed_replacement}\n", existing.trim_end()),
+    }
+}
+
 fn print_json_pretty<T: Serialize>(value: &T) -> Result<(), Box<dyn Error>> {
     println!("{}", serde_json::to_string_pretty(value)?);
     Ok(())
@@ -990,5 +1471,60 @@ mod tests {
         assert_eq!(contents, format!("{payload}\n"));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn replace_marked_block_should_replace_existing_mes_guidance() {
+        let existing = "# Project\n\nold\n<!-- MES:START -->\nold block\n<!-- MES:END -->\n";
+        let replacement = "<!-- MES:START -->\nnew block\n<!-- MES:END -->";
+
+        let updated = replace_marked_block(
+            existing,
+            AGENTS_GUIDANCE_START,
+            AGENTS_GUIDANCE_END,
+            replacement,
+        );
+
+        assert!(updated.contains("new block"));
+        assert!(!updated.contains("old block"));
+        assert!(updated.contains("# Project"));
+    }
+
+    #[test]
+    fn mes_config_should_round_trip_through_toml() {
+        let config = MesConfigFile {
+            agent: MesAgentConfig {
+                id: "coder-01".to_owned(),
+                role: "reviewer".to_owned(),
+                project: "alpha".to_owned(),
+                branch: "main".to_owned(),
+                port: 7000,
+                status: AgentStatus::Idle,
+                capabilities: vec!["review".to_owned()],
+                metadata: BTreeMap::from([(String::from("team"), String::from("core"))]),
+            },
+            discovery: MesDiscoveryConfig {
+                service_type: zero_conf_mesh::DEFAULT_SERVICE_TYPE.to_owned(),
+                mdns_port: zero_conf_mesh::DEFAULT_MDNS_PORT,
+                heartbeat_ms: DEFAULT_HEARTBEAT_MS,
+                ttl_ms: DEFAULT_TTL_MS,
+                shared_secret: Some("secret".to_owned()),
+                shared_secret_accept: vec!["old-secret".to_owned()],
+                shared_secret_mode: SharedSecretModeArg::SignAndVerify,
+                enable_interface: vec!["ipv4".to_owned()],
+                disable_interface: vec!["loopback-v4".to_owned()],
+            },
+        };
+
+        let serialized = toml::to_string_pretty(&config).expect("config should serialize");
+        let round_trip: MesConfigFile =
+            toml::from_str(&serialized).expect("config should deserialize");
+
+        assert_eq!(round_trip.agent.id, "coder-01");
+        assert_eq!(round_trip.agent.capabilities, vec!["review"]);
+        assert_eq!(
+            round_trip.discovery.shared_secret.as_deref(),
+            Some("secret")
+        );
     }
 }

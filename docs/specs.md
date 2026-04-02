@@ -9,7 +9,7 @@ The crate currently provides:
 - background browsing for remote peers,
 - a concurrent in-memory registry with TTL-based stale-node eviction,
 - lifecycle events for join, update, and leave transitions,
-- and a first-party CLI binary (`mes`) for shell/LLM-driven interaction.
+- and a first-party CLI binary (`mes`) for shell/LLM-driven interaction, including repo-local bootstrap via `mes init`.
 
 At the MVP level, every node should advertise enough data for peers to identify:
 - who the node is (`agent_id`),
@@ -28,7 +28,7 @@ At the MVP level, every node should advertise enough data for peers to identify:
 ### Non-Goals
 - Cross-subnet or WAN discovery.
 - Strong delivery guarantees.
-- Authentication or encryption of advertisements.
+- Full PKI-style identity, encryption, or WAN-safe trust guarantees.
 - Consensus, leader election, or distributed locking.
 
 ## 3. Architecture
@@ -89,6 +89,8 @@ For observer-style use cases, the runtime also supports discovery-only mode wher
 
 The `mes` CLI builds on this mode for `list`, `get`, and `watch` commands, and can optionally mirror the current registry to a JSON file for file-oriented agents.
 It also supports:
+- `init` for creating `.mes.toml` plus repository-specific AGENTS guidance,
+- `up` for announcing directly from the generated config,
 - `who` as a human/agent-friendly alias for `list`,
 - append-only JSONL event export,
 - shell-command hooks fed by JSON over stdin,
@@ -385,6 +387,7 @@ This ratio provides:
 - **`tracing`**: lightweight observability for runtime tasks and daemon interaction.
 - **`clap`**: first-party CLI argument parsing for the `mes` binary.
 - **`serde_json`**: JSON output for shell- and agent-friendly CLI responses.
+- **`toml`**: repo-local CLI config parsing and generation for `.mes.toml`.
 
 ## 9. Testing Strategy
 The current testing strategy is split into three layers.
@@ -438,6 +441,7 @@ In practice, the project should keep passing:
 - `cargo test`
 - `cargo test --doc`
 - `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo package --locked`
 
 ### 9.5 Tests That Should Be Added Next
 The current suite is good for the present slice, but the next implementation steps should add:

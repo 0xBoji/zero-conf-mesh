@@ -73,3 +73,21 @@ A change is in good shape when it:
 - is formatted,
 - is lint-clean,
 - and has appropriate tests for the level of change.
+
+<!-- MES:START -->
+## mes agent workflow
+
+This repository is configured to use `mes` for local LAN agent discovery.
+
+If `.mes.toml` is missing on this machine, run `mes init --force` before using the commands below.
+
+Recommended commands for AI agents in this repo:
+- bring this repo's agent online: `mes up`
+- list peers for this project: `mes who --config .mes.toml --project zero-conf-mesh`
+- find a reviewer quickly: `mes who --config .mes.toml --project zero-conf-mesh --role reviewer`
+- mirror live mesh state to a file: `mes watch --config .mes.toml --write-state /tmp/zero-conf-mesh-mes-state.json`
+- start the local HTTP + SSE bridge: `mes serve --config .mes.toml --bind 127.0.0.1:9999`
+
+The generated config already includes this repo's defaults for project, branch, ports, and discovery settings.
+Prefer reusing a single long-running `mes up` process instead of starting multiple announcers for the same machine.
+<!-- MES:END -->
